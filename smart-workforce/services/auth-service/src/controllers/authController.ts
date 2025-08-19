@@ -30,11 +30,16 @@ export const register = async (req: Request, res: Response) => {
 export const login = async (req: Request, res: Response) => {
   const payload = req.body as LoginInput;
   const { email, password } = payload;
-  const { user, token } = await authServ.login(email, password);
+  const { user, token, refreshToken } = await authServ.login(email, password);
 
   res.status(200).json({
     token,
-    user: { id: user.id, email: user.email, name: user.name },
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      refreshTokens: refreshToken,
+    },
   });
 };
 // Forgot Password
@@ -68,11 +73,25 @@ export const resetPassword = async (
 };
 
 // Logout (for JWT, usually handled client-side, but can blacklist token)
-export const logout = async (req: Request, res: Response) => {
-  // If using token blacklist, implement here
-  res.status(200).json({ message: 'Logged out successfully.' });
-};
+export const logout = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const rawRefresh =
+      (req.cookies && req.cookies.refreshToken) || req.body?.refreshToken;
+    if (rawRefresh) {
+      await authServ.revokeRefreshToken(rawRefresh, req.ip);
+    }
 
+    // clear cookie
+    res.clearCookie('refreshToken', { path: '/api/auth' });
+    return res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+};
 // Restrict To (role-based access)
 export const restrictTo = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -136,9 +155,32 @@ export const refresh = async (
   next: NextFunction,
 ) => {
   try {
-    const payload = { refreshToken: req.cookies?.refreshToken } as RefreshInput;
-    const { accessToken, newRefreshToken } = payload;
-  } catch (err) {}
+    const rawRefresh =
+      (req.cookies && req.cookies.refreshToken) || req.body?.refreshToken;
+    if (!rawRefresh) throw new AppError('No refresh token provided', 401);
+
+    const { accessToken, newRefreshToken } = await authServ.rotateRefreshToken(
+      rawRefresh,
+      req.ip,
+    );
+
+    const secure = String(process.env.COOKIE_SECURE || 'false') === 'true';
+
+    res.cookie('refreshToken', newRefreshToken, {
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      path: '/api/auth',
+      maxAge:
+        Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30) * 24 * 60 * 60 * 1000,
+    });
+
+    return res.status(200).json({
+      token: accessToken,
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 export const me = async (req: Request, res: Response) => {

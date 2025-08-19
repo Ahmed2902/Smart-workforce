@@ -29,7 +29,9 @@ export const login = async (email: string, password: string) => {
   const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
   if (!isPasswordValid) throw new AppError('Invalid credentials', 401);
   const token = jwtUtil.sign({ sub: user.id, email: user.email });
-  return { user, token };
+  const refreshToken = await issueRefreshToken(user.id);
+
+  return { user, token, refreshToken };
 };
 
 // Forgot Password
@@ -129,5 +131,85 @@ export const issueRefreshToken = async (userId: string, ip = 'system') => {
     Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000,
   );
 
-  await prisma.refres;
+  await prisma.refreshToken.create({
+    data: {
+      token: hashed,
+      userId: userId,
+      expiresAt,
+    },
+  });
+  return raw;
+};
+
+export const rotateRefreshToken = async (rawToken: string, ip = 'system') => {
+  if (!rawToken) throw new AppError('Missing refresh token', 401);
+
+  const hashed = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+  const existing = await prisma.refreshToken.findUnique({
+    where: { token: hashed },
+  });
+
+  if (!existing || existing?.revoked) {
+    throw new AppError('invalid refresh token', 401);
+  }
+
+  if (existing.expiresAt < new Date()) {
+    // expired
+    // optional: mark as revoked for hygiene
+    await prisma.refreshToken.update({
+      where: { id: existing.id },
+      data: { revoked: true },
+    });
+    throw new AppError('Refresh token expired', 401);
+  }
+
+  const newRaw = crypto.randomBytes(48).toString('hex');
+  const newHash = crypto.createHash('sha256').update(newRaw).digest('hex');
+  const newExpiresAt = new Date(
+    Date.now() + REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000,
+  );
+
+  await prisma.$transaction([
+    prisma.refreshToken.update({
+      where: { id: existing.id },
+      data: { revoked: true },
+    }),
+    prisma.refreshToken.create({
+      data: {
+        token: newHash,
+        userId: existing.userId,
+        expiresAt: newExpiresAt,
+      },
+    }),
+  ]);
+
+  const user = await prisma.user.findUnique({ where: { id: existing.userId } });
+  if (!user) throw new AppError('User not found', 404);
+
+  const accessToken = jwtUtil.sign({
+    sub: user.id,
+    email: user.email,
+    role: user.role,
+  });
+
+  return { accessToken, newRefreshToken: newRaw };
+};
+
+export const revokeRefreshToken = async (rawToken: string, ip = 'system') => {
+  if (!rawToken) return;
+
+  const hashed = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+  await prisma.refreshToken.updateMany({
+    where: { token: hashed, revoked: false },
+    data: { revoked: true },
+  });
+};
+
+export const revokeAllRefreshTokensForUser = async (userId: string) => {
+  await prisma.refreshToken.updateMany({
+    where: { userId, revoked: false },
+    data: { revoked: true },
+  });
 };
