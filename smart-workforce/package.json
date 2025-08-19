@@ -1,0 +1,25 @@
+{
+  "name": "smart-workforce",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "services/*",
+    "packages/*"
+  ],
+  "packageManager": "npm@11.5.2",
+  "scripts": {
+    "dev": "npm run dev -ws",
+    "build": "npm run build -w @swma/shared",
+    "lint": "npm run lint -ws",
+    "format": "npm run format -ws",
+    "postinstall": "npm run build -ws || true"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.33.0",
+    "@types/estree": "^1.0.8",
+    "@types/json-schema": "^7.0.15",
+    "eslint": "^9.33.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2"
+  }
+}

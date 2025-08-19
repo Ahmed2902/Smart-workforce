@@ -1,0 +1,53 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  SUPERVISOR
+  EMPLOYEE
+}
+
+model User {
+  id                      String    @id @default(cuid())
+  email                   String    @unique
+  phone                   String    @unique
+  passwordHash            String
+  name                    String
+  role                    Role      @default(EMPLOYEE)
+  isActive                Boolean   @default(true)
+
+  // Security
+  loginAttempts           Int       @default(0)   // count failed logins
+  lockedUntil             DateTime?              // account temporarily locked
+
+  lastLoginAt             DateTime?
+  emailVerifiedAt         DateTime?
+  passwordResetToken      String?
+  passwordResetExpiresAt  DateTime?
+
+  // Refresh tokens (persistent, can be invalidated on logout)
+  refreshTokens           RefreshToken[]
+
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+
+  @@index([email])
+  @@index([role])
+}
+
+model RefreshToken {
+  id          String   @id @default(cuid())
+  token       String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  revoked     Boolean  @default(false)
+}
