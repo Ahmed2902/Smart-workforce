@@ -7,6 +7,8 @@ import {
   type RefreshInput,
 } from '../validators/authValidator';
 
+const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
+
 export const register = async (req: Request, res: Response) => {
   const payload = req.body as RegisterInput;
   const { email, password, name, phone } = payload;
@@ -15,14 +17,12 @@ export const register = async (req: Request, res: Response) => {
       .status(400)
       .json({ status: 'fail', message: 'Phone is required' });
   }
-  const user = await authServ.createUser(email, password, name, phone);
+  const authauthUser = await authServ.createUser(email, password, name, phone);
   res.status(201).json({
     status: 'succesful',
     data: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      phone: user.phone,
+      id: authauthUser.id,
+      email: authauthUser.email,
     },
   });
 };
@@ -30,14 +30,23 @@ export const register = async (req: Request, res: Response) => {
 export const login = async (req: Request, res: Response) => {
   const payload = req.body as LoginInput;
   const { email, password } = payload;
-  const { user, token, refreshToken } = await authServ.login(email, password);
+  const { authUser, token, refreshToken } = await authServ.login(
+    email,
+    password,
+  );
+
+  res.cookie('jwt', token, {
+    httpOnly: true, // prevents JS access (XSS protection)
+    secure: true, // send only over HTTPS
+    sameSite: 'strict', // CSRF protection
+    maxAge: 60 * 60 * 1000, // 1 hour
+  });
 
   res.status(200).json({
     token,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
+    authUser: {
+      id: authUser.id,
+      email: authUser.email,
       refreshTokens: refreshToken,
     },
   });
@@ -95,8 +104,8 @@ export const logout = async (
 // Restrict To (role-based access)
 export const restrictTo = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    const userRole = req.user?.role ?? '';
-    if (!roles.includes(userRole)) {
+    const authUserRole = req.authUser?.role ?? '';
+    if (!roles.includes(authUserRole)) {
       return next(
         new AppError('You do not have permission to perform this action', 403),
       );
@@ -106,7 +115,7 @@ export const restrictTo = (...roles: string[]) => {
 };
 
 // Pagination & Filtering with field limiting and additional filters
-export const getUsers = async (
+export const getauthUsers = async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -135,7 +144,7 @@ export const getUsers = async (
     res.status(200).json({
       status: 'success',
       data: {
-        users: result.users,
+        authUsers: result.authUsers,
         pagination: {
           total: result.total,
           page: Number(page),
@@ -168,11 +177,9 @@ export const refresh = async (
 
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure,
-      sameSite: 'lax',
-      path: '/api/auth',
-      maxAge:
-        Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30) * 24 * 60 * 60 * 1000,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: REFRESH_TTL_DAYS * 24 * 60 * 60 * 1000,
     });
 
     return res.status(200).json({
@@ -184,5 +191,5 @@ export const refresh = async (
 };
 
 export const me = async (req: Request, res: Response) => {
-  res.json({ user: req.user });
+  res.json({ authUser: req.authUser });
 };

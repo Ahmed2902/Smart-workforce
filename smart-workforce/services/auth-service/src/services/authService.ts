@@ -3,6 +3,7 @@ import bcrypt, { hash } from 'bcryptjs';
 import AppError from '../utils/appError';
 import * as jwtUtil from '../utils/jwt';
 import crypto from 'crypto';
+import { sendResetEmail } from '../utils/email';
 
 const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
 
@@ -12,47 +13,57 @@ export const createUser = async (
   name: string,
   phone: string,
 ) => {
-  const existingUser = await prisma.user.findUnique({ where: { email } });
-  if (existingUser) throw new AppError('user already exists', 400);
+  const existingauthUser = await prisma.authUser.findUnique({
+    where: { email },
+  });
+  if (existingauthUser) throw new AppError('authUser already exists', 400);
 
   const hashedPassword = await bcrypt.hash(password, 10);
-  const user = await prisma.user.create({
-    data: { email, passwordHash: hashedPassword, name, phone },
+  const authUser = await prisma.authUser.create({
+    data: { email, passwordHash: hashedPassword },
   });
-  return user;
+  return authUser;
 };
 
 export const login = async (email: string, password: string) => {
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) throw new AppError('Invalid credentials', 401);
+  const authUser = await prisma.authUser.findUnique({ where: { email } });
+  if (!authUser) throw new AppError('Invalid credentials', 401);
 
-  const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+  const isPasswordValid = await bcrypt.compare(password, authUser.passwordHash);
   if (!isPasswordValid) throw new AppError('Invalid credentials', 401);
-  const token = jwtUtil.sign({ sub: user.id, email: user.email });
-  const refreshToken = await issueRefreshToken(user.id);
+  const token = jwtUtil.sign({ sub: authUser.id, email: authUser.email });
+  const refreshToken = await issueRefreshToken(authUser.id);
 
-  return { user, token, refreshToken };
+  return { authUser, token, refreshToken };
 };
 
 // Forgot Password
 export const forgotPassword = async (email: string) => {
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) throw new AppError('No user found with that email', 404);
+  const authUser = await prisma.authUser.findUnique({ where: { email } });
+
+  if (!authUser) throw new AppError('No authUser found with that email', 404);
+
   const resetToken = crypto.randomBytes(32).toString('hex');
   const resetTokenHash = crypto
     .createHash('sha256')
     .update(resetToken)
     .digest('hex');
-  await prisma.user.update({
+  const expires = new Date(Date.now() + 60 * 60 * 1000); //1 hour
+
+  await prisma.authUser.update({
     where: { email },
     data: {
       passwordResetToken: resetTokenHash,
-      passwordResetExpiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 min
+      passwordResetExpiresAt: expires,
     },
   });
-  // Send email (dummy implementation)
-  // Use nodemailer or similar in production
-  // await sendResetEmail(user.email, resetToken);
+
+  const frontendBase =
+    process.env.FRONTEND_URL || process.env.BASE_URL || 'http://localhost:3000';
+
+  const resetUrl = `${frontendBase}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
+
+  await sendResetEmail(email, resetUrl);
   return resetToken;
 };
 
@@ -62,25 +73,26 @@ export const resetPassword = async (token: string, newPassword: string) => {
     .createHash('sha256')
     .update(token)
     .digest('hex');
-  const user = await prisma.user.findFirst({
+  const authUser = await prisma.authUser.findFirst({
     where: {
       passwordResetToken: resetTokenHash,
       passwordResetExpiresAt: { gt: new Date() },
     },
   });
-  if (!user) throw new AppError('Token is invalid or has expired', 400);
+  if (!authUser) throw new AppError('Token is invalid or has expired', 400);
   const hashedPassword = await bcrypt.hash(newPassword, 10);
-  await prisma.user.update({
-    where: { id: user.id },
+  await prisma.authUser.update({
+    where: { id: authUser.id },
     data: {
       passwordHash: hashedPassword,
       passwordResetToken: null,
       passwordResetExpiresAt: null,
     },
   });
+  await revokeAllRefreshTokensForauthUser(authUser.id.toString());
 };
 
-// Get Users with Pagination & Filtering
+// Get authUsers with Pagination & Filtering
 export const getUsers = async ({
   page = 1,
   limit = 10,
@@ -112,18 +124,22 @@ export const getUsers = async ({
     });
   }
 
-  const users = await prisma.user.findMany({
+  const authUsers = await prisma.authUser.findMany({
     where,
     skip,
     take: limit,
     select: fields.length > 0 ? selectFields : undefined,
   });
 
-  const totalUsers = await prisma.user.count({ where });
-  return { users, total: totalUsers };
+  const totalauthUsers = await prisma.authUser.count({ where });
+  return { authUsers, total: totalauthUsers };
 };
 
-export const issueRefreshToken = async (userId: string, ip = 'system') => {
+export const issueRefreshToken = async (
+  authUserId: string,
+  ip = 'system',
+  authUserAgent?: string,
+) => {
   const raw = crypto.randomBytes(48).toString('hex');
   const hashed = crypto.createHash('sha256').update(raw).digest('hex');
 
@@ -134,14 +150,19 @@ export const issueRefreshToken = async (userId: string, ip = 'system') => {
   await prisma.refreshToken.create({
     data: {
       token: hashed,
-      userId: userId,
+      userId: authUserId,
       expiresAt,
+      ip,
     },
   });
   return raw;
 };
 
-export const rotateRefreshToken = async (rawToken: string, ip = 'system') => {
+export const rotateRefreshToken = async (
+  rawToken: string,
+  ip = 'system',
+  authUserAgent?: string,
+) => {
   if (!rawToken) throw new AppError('Missing refresh token', 401);
 
   const hashed = crypto.createHash('sha256').update(rawToken).digest('hex');
@@ -180,17 +201,20 @@ export const rotateRefreshToken = async (rawToken: string, ip = 'system') => {
         token: newHash,
         userId: existing.userId,
         expiresAt: newExpiresAt,
+        ip,
       },
     }),
   ]);
 
-  const user = await prisma.user.findUnique({ where: { id: existing.userId } });
-  if (!user) throw new AppError('User not found', 404);
+  const authUser = await prisma.authUser.findUnique({
+    where: { id: existing.userId },
+  });
+  if (!authUser) throw new AppError('authUser not found', 404);
 
   const accessToken = jwtUtil.sign({
-    sub: user.id,
-    email: user.email,
-    role: user.role,
+    sub: authUser.id,
+    email: authUser.email,
+    role: authUser.role,
   });
 
   return { accessToken, newRefreshToken: newRaw };
@@ -207,9 +231,9 @@ export const revokeRefreshToken = async (rawToken: string, ip = 'system') => {
   });
 };
 
-export const revokeAllRefreshTokensForUser = async (userId: string) => {
+export const revokeAllRefreshTokensForauthUser = async (authUserId: string) => {
   await prisma.refreshToken.updateMany({
-    where: { userId, revoked: false },
+    where: { userId: authUserId, revoked: false },
     data: { revoked: true },
   });
 };

@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { RequestHandler, Router } from 'express';
 import * as authController from '../controllers/authController';
 import protect from '../middlewares/authMiddleware';
 import rateLimit from 'express-rate-limit';
@@ -22,13 +22,13 @@ const router = Router();
 router.post(
   '/register',
   validateBody(registerSchema),
-  loginLimiter,
+  loginLimiter as unknown as RequestHandler,
   authController.register,
 );
 router.post(
   '/login',
   validateBody(loginSchema),
-  loginLimiter,
+  loginLimiter as unknown as RequestHandler,
   authController.login,
 );
 router.post('/refresh', validateBody(refreshSchema), authController.refresh);
@@ -40,6 +40,10 @@ router.use(protect); // All routes after this require authentication
 
 router.get('/me', authController.me);
 router.post('/logout', authController.logout);
-router.get('/users', authController.getUsers);
+router.get(
+  '/users',
+  authController.restrictTo('admin'),
+  authController.getUsers,
+);
 
 export default router;
