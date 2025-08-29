@@ -14,25 +14,24 @@ enum Role {
   EMPLOYEE
 }
 
-model User {
+model AuthUser {
   id                      String    @id @default(cuid())
   email                   String    @unique
-  phone                   String    @unique
   passwordHash            String
-  name                    String
   role                    Role      @default(EMPLOYEE)
   isActive                Boolean   @default(true)
 
   // Security
-  loginAttempts           Int       @default(0)   // count failed logins
-  lockedUntil             DateTime?              // account temporarily locked
+  loginAttempts           Int       @default(0)
+  lockedUntil             DateTime?
 
   lastLoginAt             DateTime?
   emailVerifiedAt         DateTime?
+
   passwordResetToken      String?
   passwordResetExpiresAt  DateTime?
 
-  // Refresh tokens (persistent, can be invalidated on logout)
+  // Refresh tokens
   refreshTokens           RefreshToken[]
 
   createdAt               DateTime  @default(now())
@@ -45,9 +44,11 @@ model User {
 model RefreshToken {
   id          String   @id @default(cuid())
   token       String   @unique
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        AuthUser @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId      String
   expiresAt   DateTime
   createdAt   DateTime @default(now())
   revoked     Boolean  @default(false)
+  ip          String?
+  userAgent   String?
 }
