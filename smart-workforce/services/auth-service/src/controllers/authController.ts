@@ -6,25 +6,36 @@ import {
   type LoginInput,
   type RefreshInput,
 } from '../validators/authValidator';
+import { publishAuthUserCreated } from '../events/rabbit';
 
 const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
 
-export const register = async (req: Request, res: Response) => {
-  const payload = req.body as RegisterInput;
-  const { email, password, name, phone } = payload;
-  if (!phone) {
-    return res
-      .status(400)
-      .json({ status: 'fail', message: 'Phone is required' });
+export const register = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const payload = req.body as RegisterInput;
+    const { email, password, name, phone } = payload;
+    if (!phone) {
+      return res
+        .status(400)
+        .json({ status: 'fail', message: 'Phone is required' });
+    }
+    const user = await authServ.createUser(email, password, name, phone);
+    // publish the auth user plus the original name and phone so other services can use them
+    await publishAuthUserCreated({ ...user, name, phone });
+    res.status(201).json({
+      status: 'succesful',
+      data: {
+        id: user.id,
+        email: user.email,
+      },
+    });
+  } catch (err) {
+    next(err);
   }
-  const authauthUser = await authServ.createUser(email, password, name, phone);
-  res.status(201).json({
-    status: 'succesful',
-    data: {
-      id: authauthUser.id,
-      email: authauthUser.email,
-    },
-  });
 };
 
 export const login = async (req: Request, res: Response) => {
@@ -115,7 +126,7 @@ export const restrictTo = (...roles: string[]) => {
 };
 
 // Pagination & Filtering with field limiting and additional filters
-export const getauthUsers = async (
+export const getUsers = async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -192,4 +203,23 @@ export const refresh = async (
 
 export const me = async (req: Request, res: Response) => {
   res.json({ authUser: req.authUser });
+};
+
+export const getActiveSessions = async (req: Request, res: Response) => {
+  const id = req.authUser?.id;
+  if (!id) throw new AppError('id not found', 404);
+  return await authServ.getActiveSessions(id);
+};
+
+export const revokeSession = async (req: Request, res: Response) => {
+  const id = req.refreshToken?.sessionId;
+  if (!id) throw new AppError('id not found', 404);
+  return await authServ.revokeSession(id);
+};
+
+export const revokeAllSessionsExcept = async (req: Request, res: Response) => {
+  const sessionId = req.refreshToken?.sessionId;
+  const userId = req.authUser?.id;
+  if (!sessionId || !userId) throw new AppError('id not found', 404);
+  return await authServ.revokeAllSessionsExcept(userId, sessionId);
 };

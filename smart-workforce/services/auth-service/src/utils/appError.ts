@@ -10,9 +10,7 @@ class AppError extends Error {
     this.status = `${statusCode}`.startsWith('4') ? 'fail' : 'error';
     this.isOperational = true;
 
-    // This line ensures that the correct prototype chain is maintained
-    // for all instances of AppError.
-    Object.setPrototypeOf(this, AppError.prototype);
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 

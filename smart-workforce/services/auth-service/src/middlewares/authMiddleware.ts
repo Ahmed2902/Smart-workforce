@@ -11,10 +11,12 @@ const protect = async (req: Request, res: Response, next: NextFunction) => {
     );
   }
   const token = authHeader.split(' ')[1];
-
+  if (token === process.env.INTERNAL_TOKEN) {
+    return next();
+  }
   try {
     const payload = jwtUtil.verify(token);
-    const user = await prisma.user.findUnique({
+    const user = await prisma.authUser.findUnique({
       where: { id: payload.sub },
     });
 
@@ -23,11 +25,10 @@ const protect = async (req: Request, res: Response, next: NextFunction) => {
         new AppError('The user belonging to this token no longer exists.', 401),
       );
     }
-    req.user = {
+    req.authUser = {
       id: user.id,
       email: user.email,
       role: user.role,
-      name: user.name,
     };
     next();
   } catch (error) {

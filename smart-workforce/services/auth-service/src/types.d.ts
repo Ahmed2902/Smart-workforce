@@ -9,6 +9,9 @@ declare global {
         name?: string | null;
         role: string;
       };
+      refreshToken: {
+        sessionId: string;
+      };
     }
   }
 }

@@ -6,6 +6,12 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "outDir": "dist",
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "baseUrl": ".",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "paths": {
+      "@swma/shared": ["packages/shared/src"]
+    }
   }
 }

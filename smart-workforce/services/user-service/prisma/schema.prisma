@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+   previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["users"]
+}
+
+/// ========== MODELS ==========
+
+model User {
+  id             String                  @id @default(uuid())
+  authUserId     String                  @unique /// Link to AuthUser in auth-service (no DB-level FK)
+  email          String                  @unique
+  name           String
+  phone          String?      
+  isActive       Boolean                 @default(true)
+
+  role            Role                @default(EMPLOYEE)
+
+  // System-level role
+  systemRole     SystemRole              @default(USER)
+
+  // Org memberships (role per org)
+  memberships    OrganizationMembership[]
+
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+
+  @@schema("users")
+  Department Department[] @relation("DepartmentUsers")
+}
+
+model Organization {
+  id          String                  @id @default(uuid())
+  name        String
+  description String?
+
+  memberships OrganizationMembership[]
+  departments Department[]
+
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+
+  @@schema("users")
+}
+
+model Department {
+  id             String        @id @default(uuid())
+  name           String
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  users          User[]        @relation("DepartmentUsers")
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@schema("users")
+}
+
+model OrganizationMembership {
+  id             String        @id @default(uuid())
+  userId         String
+  user           User          @relation(fields: [userId], references: [id])
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+  role           Role      @default(EMPLOYEE)
+
+  @@unique([userId, organizationId])
+  @@schema("users")
+}
+
+
+/// ========== ENUMS ==========
+
+enum SystemRole {
+  SUPERADMIN   // full platform control
+  USER         // regular org member
+  @@schema("users")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  SUPERVISOR
+  EMPLOYEE
+  
+
+  @@schema("users")
+}

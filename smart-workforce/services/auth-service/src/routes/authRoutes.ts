@@ -46,4 +46,12 @@ router.get(
   authController.getUsers,
 );
 
+router.get('/', authController.getActiveSessions);
+
+// DELETE a specific session
+router.delete('/:sessionId', authController.revokeSession);
+
+// DELETE all sessions except current
+router.delete('/keep-current/only', authController.revokeAllSessionsExcept);
+
 export default router;

@@ -1,18 +1,27 @@
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  schemas  = ["auth"] 
 }
+
+/// ========== ENUMS ==========
 
 enum Role {
   ADMIN
   MANAGER
   SUPERVISOR
   EMPLOYEE
+  
+
+  @@schema("auth")
 }
+
+/// ========== MODELS ==========
 
 model AuthUser {
   id                      String    @id @default(cuid())
@@ -39,6 +48,8 @@ model AuthUser {
 
   @@index([email])
   @@index([role])
+  @@schema("auth")
+  
 }
 
 model RefreshToken {
@@ -51,4 +62,6 @@ model RefreshToken {
   revoked     Boolean  @default(false)
   ip          String?
   userAgent   String?
+
+  @@schema("auth")
 }

@@ -4,6 +4,7 @@ import AppError from '../utils/appError';
 import * as jwtUtil from '../utils/jwt';
 import crypto from 'crypto';
 import { sendResetEmail } from '../utils/email';
+import * as redis from '@swma/shared/src/redis';
 
 const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
 
@@ -26,7 +27,19 @@ export const createUser = async (
 };
 
 export const login = async (email: string, password: string) => {
-  const authUser = await prisma.authUser.findUnique({ where: { email } });
+  // Try to get user from cache first
+  const cacheKey = `auth:user:email:${email.toLowerCase()}`;
+  let authUser = await redis.getCache(cacheKey);
+
+  // If not in cache, query database
+  if (!authUser) {
+    authUser = await prisma.authUser.findUnique({ where: { email } });
+    if (authUser) {
+      // Cache the user for 5 minutes
+      await redis.setCache(cacheKey, authUser, 300);
+    }
+  }
+
   if (!authUser) throw new AppError('Invalid credentials', 401);
 
   const isPasswordValid = await bcrypt.compare(password, authUser.passwordHash);
@@ -138,7 +151,7 @@ export const getUsers = async ({
 export const issueRefreshToken = async (
   authUserId: string,
   ip = 'system',
-  authUserAgent?: string,
+  userAgent: string = 'unknown',
 ) => {
   const raw = crypto.randomBytes(48).toString('hex');
   const hashed = crypto.createHash('sha256').update(raw).digest('hex');
@@ -152,6 +165,7 @@ export const issueRefreshToken = async (
       token: hashed,
       userId: authUserId,
       expiresAt,
+      userAgent,
       ip,
     },
   });
@@ -161,17 +175,26 @@ export const issueRefreshToken = async (
 export const rotateRefreshToken = async (
   rawToken: string,
   ip = 'system',
-  authUserAgent?: string,
+  userAgent: string = 'unknown',
 ) => {
   if (!rawToken) throw new AppError('Missing refresh token', 401);
 
   const hashed = crypto.createHash('sha256').update(rawToken).digest('hex');
+  const revokedCacheKey = `auth:revoked:${hashed}`;
+
+  // Check if token is revoked in cache first
+  const isRevokedInCache = await redis.getCache(revokedCacheKey);
+  if (isRevokedInCache) {
+    throw new AppError('invalid refresh token', 401);
+  }
 
   const existing = await prisma.refreshToken.findUnique({
     where: { token: hashed },
   });
 
   if (!existing || existing?.revoked) {
+    // Cache the revocation
+    await redis.setCache(revokedCacheKey, true, 2592000); // 30 days
     throw new AppError('invalid refresh token', 401);
   }
 
@@ -182,6 +205,7 @@ export const rotateRefreshToken = async (
       where: { id: existing.id },
       data: { revoked: true },
     });
+    await redis.setCache(revokedCacheKey, true, 2592000); // 30 days
     throw new AppError('Refresh token expired', 401);
   }
 
@@ -200,11 +224,15 @@ export const rotateRefreshToken = async (
       data: {
         token: newHash,
         userId: existing.userId,
-        expiresAt: newExpiresAt,
         ip,
+        userAgent,
+        expiresAt: newExpiresAt,
       },
     }),
   ]);
+
+  // Mark old token as revoked in cache
+  await redis.setCache(revokedCacheKey, true, 2592000); // 30 days
 
   const authUser = await prisma.authUser.findUnique({
     where: { id: existing.userId },
@@ -229,11 +257,42 @@ export const revokeRefreshToken = async (rawToken: string, ip = 'system') => {
     where: { token: hashed, revoked: false },
     data: { revoked: true },
   });
+
+  // Mark as revoked in Redis cache for fast subsequent checks
+  const revokedCacheKey = `auth:revoked:${hashed}`;
+  await redis.setCache(revokedCacheKey, true, 2592000); // 30 days
 };
 
 export const revokeAllRefreshTokensForauthUser = async (authUserId: string) => {
   await prisma.refreshToken.updateMany({
     where: { userId: authUserId, revoked: false },
+    data: { revoked: true },
+  });
+};
+
+export const getActiveSessions = async (userId: string) => {
+  return await prisma.refreshToken.findMany({
+    where: { userId, revoked: false, expiresAt: { gt: new Date() } },
+    select: { id: true, ip: true, userAgent: true, createdAt: true },
+  });
+};
+
+export const revokeSession = async (sessionId: string) => {
+  await prisma.refreshToken.update({
+    where: { id: sessionId },
+    data: { revoked: true },
+  });
+};
+
+export const revokeAllSessionsExcept = async (
+  userId: string,
+  sessionId: string,
+) => {
+  await prisma.refreshToken.updateMany({
+    where: {
+      userId,
+      id: { not: sessionId },
+    },
     data: { revoked: true },
   });
 };

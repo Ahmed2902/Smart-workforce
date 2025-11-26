@@ -9,10 +9,10 @@
   "packageManager": "npm@11.5.2",
   "scripts": {
     "dev": "npm run dev -ws",
-    "build": "npm run build -w @swma/shared",
+    "build": "npm run build -ws",
     "lint": "npm run lint -ws",
     "format": "npm run format -ws",
-    "postinstall": "npm run build -ws || true"
+    "postinstall": "npm run build -ws --if-present"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",

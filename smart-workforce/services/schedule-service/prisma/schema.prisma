@@ -1,0 +1,185 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["schedule"]
+}
+
+//
+// ==========================
+// CORE SCHEDULING MODELS
+// ==========================
+//
+
+model Schedule {
+  id             String   @id @default(uuid())
+  name           String?
+  startDate      DateTime
+  endDate        DateTime
+  createdById    String   // references CachedUser
+  organizationId String ?  // references CachedOrganization
+  departmentId   String?  // references CachedDepartment
+
+  // Relations
+  createdBy      CachedUser        @relation(fields: [createdById], references: [id])
+  organization   CachedOrganization? @relation(fields: [organizationId], references: [id])
+  department     CachedDepartment? @relation(fields: [departmentId], references: [id])
+  shifts         Shift[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@schema("schedule")
+  @@index([organizationId])
+  @@index([departmentId])
+  @@index([createdById])
+  CachedUser CachedUser[] @relation("Schedule_createdBy")
+}
+
+model Shift {
+  id            String   @id @default(uuid())
+  scheduleId    String
+  name          String?
+  startTime     DateTime
+  endTime       DateTime
+  location      String?
+  createdBy     String
+
+  // Relations
+  schedule      Schedule?         @relation(fields: [scheduleId], references: [id])
+  assignments   ShiftAssignment[]
+  user          CachedUser ?      @relation(fields: [createdBy],references: [id])
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@schema("schedule")
+  @@index([scheduleId])
+}
+
+model ShiftAssignment {
+  id            String   @id @default(uuid())
+  shiftId       String
+  employeeId    String   // references CachedUser
+  assignedAt    DateTime @default(now())
+  assignedBy    String
+  unassignedAt  DateTime?
+
+  // Relations
+  shift         Shift       @relation(fields: [shiftId], references: [id])
+  employee      CachedUser  @relation(fields: [employeeId], references: [id])
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@schema("schedule")
+  @@index([employeeId])
+  @@index([shiftId])
+  @@unique([shiftId, employeeId])
+}
+
+//
+// ==========================
+// CACHED ENTITIES (from user-service)
+// ==========================
+//
+
+model CachedUser {
+  id             String   @id // same as user-service UUID
+  name           String
+  email          String   @unique
+  organizationId String
+  departmentId   String?
+
+  role           Role     @default(EMPLOYEE)
+  systemRole     SystemRole @default(USER)
+
+  // Relations
+  schedules      Schedule[]       @relation("Schedule_createdBy")
+  assignments    ShiftAssignment[]
+  organization   CachedOrganization @relation(fields: [organizationId], references: [id])
+  department     CachedDepartment? @relation(fields: [departmentId], references: [id])
+
+  @@schema("schedule")
+  @@index([organizationId])
+  @@index([departmentId])
+  Schedule Schedule[]
+  Shift Shift[]
+  CachedOrganizationMembership CachedOrganizationMembership[]
+}
+
+model CachedDepartment {
+  id             String   @id // same as department-service UUID
+  name           String
+  organizationId String
+
+  // Relations
+  schedules      Schedule[]
+  users          CachedUser[]
+  organization   CachedOrganization @relation(fields: [organizationId], references: [id])
+
+  @@schema("schedule")
+  @@index([organizationId])
+}
+
+model CachedOrganization {
+  id           String   @id // same as org-service UUID
+  name         String
+  departments  CachedDepartment[]
+  users        CachedUser[]
+  schedules    Schedule[]
+
+  @@schema("schedule")
+  CachedOrganizationMembership CachedOrganizationMembership[]
+}
+
+model CachedOrganizationMembership {
+  id             String        @id @default(uuid())
+  userId         String
+  user           CachedUser          @relation(fields: [userId], references: [id])
+  organizationId String
+  organization   CachedOrganization  @relation(fields: [organizationId], references: [id])
+  role           Role      @default(EMPLOYEE)
+
+  @@unique([userId, organizationId])
+  @@schema("schedule")
+}
+
+//
+// ==========================
+// NOTES
+// ==========================
+//
+// 1. CachedUser, CachedDepartment, CachedOrganization are synced via RabbitMQ events
+//    (created/updated/deleted).
+//
+// 2. We enforce relations in Prisma so Schedule service can join against cached tables.
+//
+// 3. Validations to enforce in service layer (not Prisma):
+//    - Schedule.startDate < Schedule.endDate
+//    - Shift.startTime < Shift.endTime
+//    - Prevent double-booking users in overlapping shifts
+//    - departmentId (if present) must belong to same organizationId
+//
+// 4. Deletions cascade in service logic (delete shifts when schedule deleted, etc.)
+//
+
+enum Role {
+  ADMIN
+  MANAGER
+  SUPERVISOR
+  EMPLOYEE
+  
+
+  @@schema("schedule")
+}
+
+enum SystemRole {
+  SUPERADMIN   // full platform control
+  USER         // regular org member
+  @@schema("schedule")
+}
