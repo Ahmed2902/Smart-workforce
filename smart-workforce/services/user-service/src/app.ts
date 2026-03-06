@@ -20,6 +20,10 @@ app.use((req, res, next) => {
 });
 
 // Routes
+app.get('/health', (_req, res) => {
+  res.status(200).json({ status: 'ok', service: 'user-service' });
+});
+
 app.use('/api/users', userRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/organizations', organizationRoutes);

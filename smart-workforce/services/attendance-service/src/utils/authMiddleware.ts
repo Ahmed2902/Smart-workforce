@@ -10,47 +10,72 @@ interface AuthenticatedRequest extends Request {
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
+const gatewayToken = process.env.GATEWAY_TOKEN || 'gateway-internal-token';
+const allowDirectAuth = process.env.ALLOW_DIRECT_AUTH === 'true';
 
 export const protect = (
   req: AuthenticatedRequest,
   res: Response,
   next: NextFunction,
 ) => {
+  if (req.header('x-gateway-token') === gatewayToken) {
+    const id = req.header('x-user-id');
+    const email = req.header('x-user-email') || '';
+    const role = req.header('x-user-role') || '';
+
+    if (!id || !role) {
+      return res.status(401).json({ message: 'Missing forwarded auth headers' });
+    }
+
+    req.user = { id, email, role };
+    return next();
+  }
+
+  let token: string | undefined;
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith('Bearer')
+  ) {
+    token = req.headers.authorization.split(' ')[1];
+  }
+
+  if (token === process.env.INTERNAL_TOKEN) {
+    req.user = {
+      id: 'internal-service',
+      email: 'internal@service.local',
+      role: 'ADMIN',
+    };
+    return next();
+  }
+
+  if (!allowDirectAuth) {
+    return res.status(401).json({ message: 'Gateway authentication required.' });
+  }
+
+  if (!token) {
+    return res.status(401).json({ message: 'Not authorized. Token missing.' });
+  }
+
   try {
-    let token: string | undefined;
-
-    // Expect token in the Authorization header as: "Bearer <token>"
-    if (
-      req.headers.authorization &&
-      req.headers.authorization.startsWith('Bearer')
-    ) {
-      token = req.headers.authorization.split(' ')[1];
-    }
-
-    if (token === process.env.INTERNAL_TOKEN) {
-      return next();
-    }
-    if (!token) {
-      return res
-        .status(401)
-        .json({ message: 'Not authorized. Token missing.' });
-    }
-
     const decoded = jwt.verify(token, JWT_SECRET) as {
-      id: string;
-      email: string;
-      role: string;
+      id?: string;
+      sub?: string;
+      email?: string;
+      role?: string;
     };
 
     req.user = {
-      id: decoded.id,
-      email: decoded.email,
-      role: decoded.role,
+      id: decoded.sub || decoded.id || '',
+      email: decoded.email || '',
+      role: decoded.role || '',
     };
 
-    next();
+    if (!req.user.id || !req.user.role) {
+      return res.status(401).json({ message: 'Invalid token payload.' });
+    }
+
+    return next();
   } catch (error) {
-    console.error('Auth Error:', error);
     return res.status(401).json({ message: 'Invalid or expired token.' });
   }
 };

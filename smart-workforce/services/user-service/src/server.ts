@@ -6,50 +6,68 @@ import config from './utils/config';
 import { initRedis, closeRedis } from '@swma/shared';
 
 const prisma = new PrismaClient();
+const PORT = config.PORT || 3002;
 
-const PORT = config.PORT || 4000;
+async function retry<T>(
+  label: string,
+  fn: () => Promise<T>,
+  attempts = 15,
+  delayMs = 2000,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) break;
+      console.warn(
+        `[user-service] ${label} attempt ${attempt}/${attempts} failed, retrying in ${delayMs}ms`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  throw lastError;
+}
 
 async function start() {
   try {
-    // Initialize Redis connection (optional, continues without if unavailable)
+    await retry('database connection', () => prisma.$connect());
+    await retry('RabbitMQ connection', () => connectRabbit());
+    await retry('RabbitMQ consumer startup', () => consumeUserEvents());
+
     try {
-      await initRedis();
-      console.log('✅ Redis connected');
-    } catch (err) {
+      await retry('Redis connection', () => initRedis(), 5, 1500);
+    } catch (error) {
       console.warn(
-        '⚠️  Redis unavailable, continuing without caching:',
-        String(err),
+        '[user-service] Redis unavailable, continuing without cache',
+        String(error),
       );
     }
 
-    // connect to rabbit and start consuming
-    await connectRabbit();
-    await consumeUserEvents();
-
     const server = app.listen(PORT, () => {
-      console.log(`🚀 User service running on port ${PORT}`);
+      console.log(`[user-service] running on port ${PORT}`);
     });
 
     const shutdown = async () => {
-      console.log('Shutting down gracefully...');
       server.close();
       try {
         await prisma.$disconnect();
-      } catch (e) {
-        console.error('Error disconnecting prisma', e);
+      } catch (error) {
+        console.warn('[user-service] failed to close prisma cleanly', error);
       }
       try {
         await closeRedis();
-      } catch (e) {
-        console.error('Error disconnecting redis', e);
+      } catch (error) {
+        console.warn('[user-service] failed to close redis cleanly', error);
       }
       process.exit(0);
     };
 
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
-  } catch (err) {
-    console.error('Failed to start server', err);
+  } catch (error) {
+    console.error('[user-service] failed to start', error);
     process.exit(1);
   }
 }

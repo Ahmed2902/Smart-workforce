@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { getCache, setCache } from '@swma/shared';
+import { getCache, setCache } from './redis';
 
 export function Cache(keyPattern: string, ttl: number) {
   return function (

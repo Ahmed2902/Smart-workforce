@@ -1,4 +1,4 @@
-Run the full stack locally with Docker (dev)
+Run the full stack locally with Docker (local gateway + all services)
 
 Prerequisites
 
@@ -9,21 +9,13 @@ Start the stack
 
 ```powershell
 # from repository root
-docker compose -f docker-compose.dev.yml up --build
+docker compose -f docker-compose.local.yml up --build
 ```
 
 Notes
 
-- Services use Postgres and RabbitMQ defined in `docker-compose.dev.yml`.
-- After first build, run migrations for each service that uses Prisma before hitting endpoints:
+- The stack includes: API gateway (Nginx), auth, user, schedule, attendance, payroll, RabbitMQ, Redis, and one Postgres DB per service.
+- Migrations are run automatically on container start via `npm run prisma:deploy`.
+- Public entrypoint is the gateway: `http://localhost:8080`.
 
-```powershell
-# from services/auth-service
-docker compose exec auth-service npm run prisma:migrate
-
-# from services/user-service
-docker compose exec user-service npm run prisma:migrate
-
-# schedule-service if it has migrations
-docker compose exec schedule-service npm run prisma:migrate
-```
+- RabbitMQ management UI: `http://localhost:15672` (guest/guest).

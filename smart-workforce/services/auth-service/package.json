@@ -11,6 +11,7 @@
     "format": "prettier -w .",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "seed": "ts-node prisma/seed.ts"
   },
@@ -23,8 +24,10 @@
     "express": "^4.21.2",
     "express-async-errors": "^3.1.1",
     "express-rate-limit": "^8.0.1",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "@sendgrid/mail": "^8.1.5"
   },
   "devDependencies": {
     "@types/amqplib": "^0.10.7",

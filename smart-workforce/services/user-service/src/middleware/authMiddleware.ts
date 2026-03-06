@@ -2,55 +2,70 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from './../prismaClient';
 
-// Protect middleware: verifies JWT and attaches user (id,email,role) to req.user
+const gatewayToken = process.env.GATEWAY_TOKEN || 'gateway-internal-token';
+const allowDirectAuth = process.env.ALLOW_DIRECT_AUTH === 'true';
+
 export const protect = async (
   req: Request,
   res: Response,
   next: NextFunction,
 ) => {
+  if (req.header('x-gateway-token') === gatewayToken) {
+    const id = req.header('x-user-id');
+    const email = req.header('x-user-email') || '';
+    const role = req.header('x-user-role') || '';
+
+    if (!id || !role) {
+      return res.status(401).json({ message: 'Missing forwarded auth headers' });
+    }
+
+    req.user = { id, email, role };
+    return next();
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return next(new Error('No token provided or invalid token format.'));
+    return res.status(401).json({ message: 'No token provided' });
   }
 
   const token = authHeader.split(' ')[1];
-  const secret = process.env.JWT_SECRET as string;
   if (token === process.env.INTERNAL_TOKEN) {
+    req.user = {
+      id: 'internal-service',
+      email: 'internal@service.local',
+      role: 'ADMIN',
+    };
     return next();
   }
-  try {
-    const payload = jwt.verify(token, secret) as {
-      sub: string;
-    };
-    console.log('🔑 Decoded JWT payload:', payload); // 👈 log token contents
 
-    // 👇 look up the local user by authUserId
+  if (!allowDirectAuth) {
+    return res.status(401).json({ message: 'Gateway authentication required' });
+  }
+
+  const secret = process.env.JWT_SECRET as string;
+  try {
+    const payload = jwt.verify(token, secret) as { sub: string };
     const user = await prisma.user.findUnique({
       where: { authUserId: payload.sub },
       select: { id: true, email: true, systemRole: true, isActive: true },
     });
 
     if (!user || !user.isActive) {
-      return next(
-        new Error('The user belonging to this token no longer exists.'),
-      );
+      return res.status(401).json({ message: 'The user no longer exists' });
     }
-    console.log('👤 User fetched from DB:', user);
 
-    // Attach to request
     req.user = {
       id: user.id,
       email: user.email,
       role: user.systemRole,
     };
 
-    next();
+    return next();
   } catch (error) {
-    return next(new Error('Invalid or expired token.'));
+    return res.status(401).json({ message: 'Invalid or expired token' });
   }
 };
 
-// ✅ Middleware to restrict access based on role
 export const restrictTo = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user || !roles.includes(req.user.role)) {

@@ -4,7 +4,7 @@ import AppError from '../utils/appError';
 import * as jwtUtil from '../utils/jwt';
 import crypto from 'crypto';
 import { sendResetEmail } from '../utils/email';
-import * as redis from '@swma/shared/src/redis';
+import * as redis from '@swma/shared';
 
 const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
 

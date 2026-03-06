@@ -42,7 +42,7 @@ router.get('/me', authController.me);
 router.post('/logout', authController.logout);
 router.get(
   '/users',
-  authController.restrictTo('admin'),
+  authController.restrictTo('ADMIN'),
   authController.getUsers,
 );
 

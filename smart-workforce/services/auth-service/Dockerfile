@@ -1,6 +1,8 @@
-FROM node:20-alpine
+FROM node:20-slim
 
 WORKDIR /app
+
+RUN apt-get update -y && apt-get install -y openssl wget && rm -rf /var/lib/apt/lists/*
 
 # First, copy only package.json files
 COPY package.json .
@@ -8,8 +10,8 @@ COPY tsconfig.base.json .
 COPY packages/shared/package.json ./packages/shared/
 COPY services/auth-service/package.json ./services/auth-service/
 
-# Install dependencies at the root
-RUN npm install
+# Install dependencies without running root postinstall during image layering
+RUN npm install --ignore-scripts
 
 # Copy the rest of the files
 COPY packages/shared/ ./packages/shared/
@@ -21,6 +23,7 @@ COPY services/auth-service/prisma/ ./services/auth-service/prisma/
 WORKDIR /app/services/auth-service
 
 # Generate Prisma client and build
+RUN npm run build --workspace @swma/shared
 RUN npx prisma generate
 RUN npm run build
 

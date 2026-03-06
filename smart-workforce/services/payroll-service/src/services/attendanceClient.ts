@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios';
 
 const ATTENDANCE_SERVICE_URL =
-  process.env.ATTENDANCE_SERVICE_URL || 'http://localhost:3003/api/attendance';
+  process.env.ATTENDANCE_SERVICE_URL || 'http://localhost:3004/api/attendance';
 
 interface EmployeeHours {
   employeeId: string;

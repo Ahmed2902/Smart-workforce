@@ -6,7 +6,7 @@ dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 const get = (k: string, fallback?: string) => process.env[k] ?? fallback;
 
 export default {
-  PORT: Number(get('PORT', '4000')),
+  PORT: Number(get('PORT', '3002')),
   DATABASE_URL: get(
     'DATABASE_URL',
     'postgres://postgres:postgres@localhost:5432/userdb',

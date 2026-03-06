@@ -5,3 +5,5 @@ dist
 .prisma
 .coverage
 .DS_Store
+*.tsbuildinfo
+packages/shared/src/*.js

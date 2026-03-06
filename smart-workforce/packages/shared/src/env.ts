@@ -9,7 +9,7 @@ export const baseEnv = z.object({
   PORT: z.coerce.number().default(3000),
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().default("redis://localhost:6379"),
-  NATS_URL: z.string().default("nats://localhost:4222"),
+  RABBITMQ_URL: z.string().default("amqp://localhost:5672"),
 });
 
 export type BaseEnv = z.infer<typeof baseEnv>;

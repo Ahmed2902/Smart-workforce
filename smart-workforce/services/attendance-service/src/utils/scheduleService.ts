@@ -3,7 +3,7 @@ import AppError from './appError';
 import { getCache, setCache } from '@swma/shared';
 
 const SCHEDULE_SERVICE_URL =
-  process.env.SCHEDULE_SERVICE_URL || 'http://localhost:3002';
+  process.env.SCHEDULE_SERVICE_URL || 'http://localhost:3003';
 
 export async function getShiftDetails(shiftId: string): Promise<ShiftDetails> {
   try {

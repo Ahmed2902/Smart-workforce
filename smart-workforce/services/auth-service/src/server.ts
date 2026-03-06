@@ -1,64 +1,67 @@
-import express from 'express';
-import bodyParser from 'body-parser';
+import app from './app';
 import { connectRabbit } from './events/rabbit';
-import { initRedis, closeRedis } from '@swma/shared/src/redis';
-import authRoutes from './routes/authRoutes'; // adjust path if needed
+import prisma from './prismaClient';
+import { initRedis, closeRedis } from '@swma/shared';
 
-const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = Number(process.env.PORT || 3001);
 
-app.use(bodyParser.json());
-
-// Routes
-app.use('/api/auth', authRoutes);
-
-const startServer = async () => {
-  try {
-    // Initialize Redis connection (optional, continues without if unavailable)
+async function retry<T>(
+  label: string,
+  fn: () => Promise<T>,
+  attempts = 15,
+  delayMs = 2000,
+): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      await initRedis();
-      console.log('✅ Redis connected');
-    } catch (err) {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) break;
       console.warn(
-        '⚠️  Redis unavailable, continuing without caching:',
-        String(err),
+        `[auth-service] ${label} attempt ${attempt}/${attempts} failed, retrying in ${delayMs}ms`,
       );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
     }
+  }
+  throw lastError;
+}
 
-    // Try to connect to RabbitMQ before starting server. If RabbitMQ
-    // is not available in local dev, log a warning and continue so the
-    // HTTP server can still be used for local development.
+async function start() {
+  try {
+    await retry('database connection', () => prisma.$connect());
+    await retry('RabbitMQ connection', () => connectRabbit());
+
     try {
-      await connectRabbit();
-    } catch (err) {
+      await retry('Redis connection', () => initRedis(), 5, 1500);
+    } catch (error) {
       console.warn(
-        '⚠️  RabbitMQ unavailable, continuing without events:',
-        String(err),
+        '[auth-service] Redis unavailable, continuing without cache',
+        String(error),
       );
     }
 
     const server = app.listen(PORT, () => {
-      console.log(`🚀 Auth service running on port ${PORT}`);
+      console.log(`[auth-service] running on port ${PORT}`);
     });
 
-    // Graceful shutdown
-    process.on('SIGINT', async () => {
-      console.log('Shutting down gracefully...');
+    const shutdown = async () => {
       server.close();
-      await closeRedis();
+      await prisma.$disconnect();
+      try {
+        await closeRedis();
+      } catch (error) {
+        console.warn('[auth-service] failed to close Redis cleanly', error);
+      }
       process.exit(0);
-    });
+    };
 
-    process.on('SIGTERM', async () => {
-      console.log('Shutting down gracefully...');
-      server.close();
-      await closeRedis();
-      process.exit(0);
-    });
-  } catch (err) {
-    console.error('❌ Failed to start service:', err);
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+  } catch (error) {
+    console.error('[auth-service] failed to start', error);
     process.exit(1);
   }
-};
+}
 
-startServer();
+start();
