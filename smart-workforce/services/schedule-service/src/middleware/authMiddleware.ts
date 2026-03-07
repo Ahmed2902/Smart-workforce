@@ -4,7 +4,10 @@ import { PrismaClient } from '@prisma/client';
 import AppError from '../utils/AppError';
 
 const prisma = new PrismaClient();
-const gatewayToken = process.env.GATEWAY_TOKEN || 'gateway-internal-token';
+const gatewayToken = process.env.GATEWAY_TOKEN;
+if (!gatewayToken) {
+  throw new Error('GATEWAY_TOKEN environment variable is required');
+}
 const allowDirectAuth = process.env.ALLOW_DIRECT_AUTH === 'true';
 
 export const protect = async (

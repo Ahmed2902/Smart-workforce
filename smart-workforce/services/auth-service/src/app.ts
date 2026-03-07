@@ -22,7 +22,10 @@ const globalLimiter = rateLimit({
 });
 
 const isProd = process.env.NODE_ENV === 'production';
-const gatewayToken = process.env.GATEWAY_TOKEN || 'gateway-internal-token';
+const gatewayToken = process.env.GATEWAY_TOKEN;
+if (!gatewayToken) {
+  throw new Error('GATEWAY_TOKEN environment variable is required');
+}
 
 const app = express();
 

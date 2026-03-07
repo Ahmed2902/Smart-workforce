@@ -10,7 +10,10 @@ interface AuthenticatedRequest extends Request {
 }
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
-const gatewayToken = process.env.GATEWAY_TOKEN || 'gateway-internal-token';
+const gatewayToken = process.env.GATEWAY_TOKEN;
+if (!gatewayToken) {
+  throw new Error('GATEWAY_TOKEN environment variable is required');
+}
 const allowDirectAuth = process.env.ALLOW_DIRECT_AUTH === 'true';
 
 export const protect = (
