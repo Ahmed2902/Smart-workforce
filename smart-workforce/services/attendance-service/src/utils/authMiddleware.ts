@@ -9,12 +9,19 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecretkey';
 const gatewayToken = process.env.GATEWAY_TOKEN;
 if (!gatewayToken) {
   throw new Error('GATEWAY_TOKEN environment variable is required');
 }
 const allowDirectAuth = process.env.ALLOW_DIRECT_AUTH === 'true';
+
+type JwtClaims = {
+  sub?: string;
+  id?: string;
+  userId?: string;
+  email?: string;
+  role?: string;
+};
 
 export const protect = (
   req: AuthenticatedRequest,
@@ -34,48 +41,35 @@ export const protect = (
     return next();
   }
 
-  let token: string | undefined;
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer')
-  ) {
-    token = req.headers.authorization.split(' ')[1];
-  }
-
-  if (token === process.env.INTERNAL_TOKEN) {
-    req.user = {
-      id: 'internal-service',
-      email: 'internal@service.local',
-      role: 'ADMIN',
-    };
-    return next();
-  }
-
   if (!allowDirectAuth) {
     return res.status(401).json({ message: 'Gateway authentication required.' });
   }
 
-  if (!token) {
-    return res.status(401).json({ message: 'Not authorized. Token missing.' });
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'No token provided' });
   }
 
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    return res.status(500).json({ message: 'JWT secret is not configured' });
+  }
+
+  const token = authHeader.split(' ')[1];
+
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as {
-      id?: string;
-      sub?: string;
-      email?: string;
-      role?: string;
-    };
+    const payload = jwt.verify(token, jwtSecret) as JwtClaims;
+    const subject = payload.sub || payload.id || payload.userId;
+
+    if (!subject) {
+      return res.status(401).json({ message: 'Invalid token payload' });
+    }
 
     req.user = {
-      id: decoded.sub || decoded.id || '',
-      email: decoded.email || '',
-      role: decoded.role || '',
+      id: subject,
+      email: payload.email || '',
+      role: payload.role || 'USER',
     };
-
-    if (!req.user.id || !req.user.role) {
-      return res.status(401).json({ message: 'Invalid token payload.' });
-    }
 
     return next();
   } catch (error) {

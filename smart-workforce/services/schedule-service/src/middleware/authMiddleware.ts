@@ -1,14 +1,20 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
 import AppError from '../utils/AppError';
-
-const prisma = new PrismaClient();
+import prisma from '../prismaClient';
 const gatewayToken = process.env.GATEWAY_TOKEN;
 if (!gatewayToken) {
   throw new Error('GATEWAY_TOKEN environment variable is required');
 }
 const allowDirectAuth = process.env.ALLOW_DIRECT_AUTH === 'true';
+
+type JwtClaims = {
+  sub?: string;
+  id?: string;
+  userId?: string;
+  email?: string;
+  role?: string;
+};
 
 export const protect = async (
   req: Request,
@@ -28,6 +34,10 @@ export const protect = async (
     return next();
   }
 
+  if (!allowDirectAuth) {
+    return next(new AppError('Gateway authentication required', 401));
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return next(
@@ -35,45 +45,40 @@ export const protect = async (
     );
   }
 
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    return next(new AppError('JWT secret is not configured', 500));
+  }
+
   const token = authHeader.split(' ')[1];
-  if (token === process.env.INTERNAL_TOKEN) {
-    req.user = {
-      id: 'internal-service',
-      email: 'internal@service.local',
-      role: 'ADMIN',
-    };
-    return next();
-  }
 
-  if (!allowDirectAuth) {
-    return next(new AppError('Gateway authentication required', 401));
-  }
-
-  const secret = process.env.JWT_SECRET as string;
   try {
-    const payload = jwt.verify(token, secret) as { id?: string; sub?: string };
-    const subject = payload.sub || payload.id;
+    const payload = jwt.verify(token, jwtSecret) as JwtClaims;
+    const subject = payload.sub || payload.id || payload.userId;
     if (!subject) {
       return next(new AppError('Invalid token payload', 401));
     }
 
-    const user = await prisma.cachedUser.findFirst({
-      where: { id: subject },
-      select: { id: true, email: true, role: true },
-    });
+    let email = payload.email || '';
+    let role = payload.role || '';
 
-    if (!user) {
-      return next(
-        new AppError('The user belonging to this token no longer exists.', 401),
-      );
+    if (!email || !role) {
+      const cachedUser = await prisma.cachedUser.findUnique({
+        where: { id: subject },
+        select: { email: true, role: true },
+      });
+
+      if (cachedUser) {
+        email = email || cachedUser.email;
+        role = role || cachedUser.role;
+      }
     }
 
-    req.user = {
-      id: user.id,
-      email: user.email,
-      role: user.role,
-    };
+    if (!role) {
+      return next(new AppError('Invalid token payload', 401));
+    }
 
+    req.user = { id: subject, email, role };
     return next();
   } catch (error) {
     return next(new AppError('Invalid or expired token.', 401));
