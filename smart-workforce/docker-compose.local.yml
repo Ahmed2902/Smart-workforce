@@ -133,9 +133,7 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internaltoken}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
-      ALLOW_DIRECT_AUTH: ${ALLOW_DIRECT_AUTH:-false}
     command: sh -c "npm run prisma:deploy && npm run start"
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3001/health || exit 1']
@@ -161,9 +159,7 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internaltoken}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
-      ALLOW_DIRECT_AUTH: ${ALLOW_DIRECT_AUTH:-false}
     command: sh -c "npm run prisma:deploy && npm run start"
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3002/health || exit 1']
@@ -187,9 +183,7 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internaltoken}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
-      ALLOW_DIRECT_AUTH: ${ALLOW_DIRECT_AUTH:-false}
     command: sh -c "npm run prisma:deploy && npm run start"
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3003/health || exit 1']
@@ -218,9 +212,7 @@ services:
       REDIS_URL: redis://redis:6379
       SCHEDULE_SERVICE_URL: http://schedule-service:3003
       JWT_SECRET: ${JWT_SECRET:-change-me}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internaltoken}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
-      ALLOW_DIRECT_AUTH: ${ALLOW_DIRECT_AUTH:-false}
     command: sh -c "npm run prisma:deploy && npm run start"
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3004/health || exit 1']
@@ -246,9 +238,7 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       ATTENDANCE_SERVICE_URL: http://attendance-service:3004/api/attendance
       JWT_SECRET: ${JWT_SECRET:-change-me}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internaltoken}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
-      ALLOW_DIRECT_AUTH: ${ALLOW_DIRECT_AUTH:-false}
     command: sh -c "npm run prisma:deploy && npm run start"
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3005/health || exit 1']

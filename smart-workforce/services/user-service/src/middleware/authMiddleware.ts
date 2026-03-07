@@ -26,30 +26,26 @@ export const protect = async (
     return next();
   }
 
+  if (!allowDirectAuth) {
+    return res.status(401).json({ message: 'Gateway authentication required' });
+  }
+
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ message: 'No token provided' });
   }
 
   const token = authHeader.split(' ')[1];
-  if (token === process.env.INTERNAL_TOKEN) {
-    req.user = {
-      id: 'internal-service',
-      email: 'internal@service.local',
-      role: 'ADMIN',
-    };
-    return next();
-  }
-
-  if (!allowDirectAuth) {
-    return res.status(401).json({ message: 'Gateway authentication required' });
-  }
-
   const secret = process.env.JWT_SECRET as string;
   try {
-    const payload = jwt.verify(token, secret) as { sub: string };
+    const payload = jwt.verify(token, secret) as { sub?: string; id?: string };
+    const subject = payload.sub || payload.id;
+    if (!subject) {
+      return res.status(401).json({ message: 'Invalid token payload' });
+    }
+
     const user = await prisma.user.findUnique({
-      where: { authUserId: payload.sub },
+      where: { authUserId: subject },
       select: { id: true, email: true, systemRole: true, isActive: true },
     });
 

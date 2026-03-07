@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../prismaClient';
 import * as client from './attendanceClient';
-
-const prisma = new PrismaClient();
 
 export const createPayroll = async (
   employeeId: string,

@@ -11,9 +11,6 @@ const protect = async (req: Request, res: Response, next: NextFunction) => {
     );
   }
   const token = authHeader.split(' ')[1];
-  if (token === process.env.INTERNAL_TOKEN) {
-    return next();
-  }
   try {
     const payload = jwtUtil.verify(token);
     const user = await prisma.authUser.findUnique({

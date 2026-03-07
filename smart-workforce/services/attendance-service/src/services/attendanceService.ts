@@ -1,4 +1,4 @@
-import { PrismaClient, AttendanceStatus } from '@prisma/client';
+import { AttendanceStatus } from '@prisma/client';
 import AppError from '../utils/appError';
 import {
   validateShiftForEmployee,
@@ -12,8 +12,7 @@ import {
   deleteCache,
   Cache,
 } from '@swma/shared';
-
-const prisma = new PrismaClient();
+import prisma from '../prismaClient';
 
 export class attendance {
   async CheckIn(id: string) {

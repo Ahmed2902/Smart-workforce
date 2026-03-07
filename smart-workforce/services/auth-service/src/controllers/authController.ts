@@ -10,6 +10,14 @@ import { publishAuthUserCreated } from '../events/rabbit';
 
 const REFRESH_TTL_DAYS = Number(process.env.REFRESH_TOKEN_TTL_DAYS || 30);
 
+const parseBooleanQuery = (value: unknown): boolean | undefined => {
+  if (value === undefined) return undefined;
+  const normalized = String(value).trim().toLowerCase();
+  if (['true', '1', 'yes'].includes(normalized)) return true;
+  if (['false', '0', 'no'].includes(normalized)) return false;
+  return undefined;
+};
+
 export const register = async (
   req: Request,
   res: Response,
@@ -149,7 +157,7 @@ export const getUsers = async (
       search: String(search),
       fields: fieldsArray,
       role: role ? String(role) : undefined,
-      isActive: isActive !== undefined ? Boolean(isActive) : undefined,
+      isActive: parseBooleanQuery(isActive),
     });
 
     res.status(200).json({
@@ -208,18 +216,24 @@ export const me = async (req: Request, res: Response) => {
 export const getActiveSessions = async (req: Request, res: Response) => {
   const id = req.authUser?.id;
   if (!id) throw new AppError('id not found', 404);
-  return await authServ.getActiveSessions(id);
+  const sessions = await authServ.getActiveSessions(id);
+  return res.status(200).json({
+    status: 'success',
+    data: sessions,
+  });
 };
 
 export const revokeSession = async (req: Request, res: Response) => {
-  const id = req.refreshToken?.sessionId;
+  const id = req.params.sessionId;
   if (!id) throw new AppError('id not found', 404);
-  return await authServ.revokeSession(id);
+  await authServ.revokeSession(id);
+  return res.status(204).send();
 };
 
 export const revokeAllSessionsExcept = async (req: Request, res: Response) => {
   const sessionId = req.refreshToken?.sessionId;
   const userId = req.authUser?.id;
   if (!sessionId || !userId) throw new AppError('id not found', 404);
-  return await authServ.revokeAllSessionsExcept(userId, sessionId);
+  await authServ.revokeAllSessionsExcept(userId, sessionId);
+  return res.status(204).send();
 };

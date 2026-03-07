@@ -1,7 +1,5 @@
 import { getChannel, connectRabbit } from './rabbit';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import prisma from '../prismaClient';
 
 // Exchanges
 const USER_EXCHANGE = 'user';

@@ -1,8 +1,6 @@
 import { getChannel, connectRabbit } from './rabbit';
-import { PrismaClient } from '@prisma/client';
 import * as producer from './userProducer';
-
-const prisma = new PrismaClient();
+import prisma from '../prismaClient';
 
 const EXCHANGE = 'user';
 const ROUTING_KEY = 'user.created';

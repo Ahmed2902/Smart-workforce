@@ -1,8 +1,6 @@
-import { PrismaClient } from '@prisma/client';
 import AppError from '../utils/AppError';
 import { ShiftInput } from '../types';
-
-const prisma = new PrismaClient();
+import prisma from '../prismaClient';
 
 export const createShift = async (data: ShiftInput) => {
   const schedule = await prisma.schedule.findUnique({

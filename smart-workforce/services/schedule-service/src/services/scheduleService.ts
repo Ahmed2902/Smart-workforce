@@ -1,8 +1,7 @@
-import { PrismaClient, Schedule } from '@prisma/client';
+import { Schedule } from '@prisma/client';
 import AppError from '../utils/AppError';
 import { ScheduleInput } from '../types';
-
-const prisma = new PrismaClient();
+import prisma from '../prismaClient';
 
 export const createSchedule = async (data: ScheduleInput) => {
   if (data.endDate <= data.startDate) {

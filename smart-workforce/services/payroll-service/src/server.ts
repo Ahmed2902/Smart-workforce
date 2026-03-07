@@ -1,11 +1,10 @@
 import dotenv from 'dotenv';
 import app from './app';
-import { PrismaClient } from '@prisma/client';
 import { connectRabbit } from './events/rabbit';
+import prisma from './prismaClient';
 
 dotenv.config();
 
-const prisma = new PrismaClient();
 const PORT = Number(process.env.PORT || 3005);
 
 async function retry<T>(

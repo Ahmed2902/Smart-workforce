@@ -1,12 +1,10 @@
-import { PrismaClient } from '@prisma/client';
 import AppError from '../utils/AppError';
 import { shiftAssignmentInput } from '../types';
 import {
   publishShiftAssigned,
   publishShiftUnassigned,
 } from '../events/producer';
-
-const prisma = new PrismaClient();
+import prisma from '../prismaClient';
 
 export const assignEmployee = async (data: shiftAssignmentInput) => {
   const shift = await prisma.shift.findUnique({
