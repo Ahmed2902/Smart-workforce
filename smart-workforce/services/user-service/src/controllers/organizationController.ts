@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import * as orgService from '../services/organizationService';
+import orgService from '../services/organizationService';
 
 export const createOrganization = async (
   req: Request,

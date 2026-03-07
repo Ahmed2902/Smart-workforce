@@ -1,4 +1,4 @@
-import * as authServ from '../services/authService';
+import authServ from '../services/authService';
 import { Request, Response, NextFunction } from 'express';
 import AppError from '../utils/appError';
 import {

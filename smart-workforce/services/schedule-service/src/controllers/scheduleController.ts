@@ -1,4 +1,4 @@
-import * as service from '../services/scheduleService';
+import service from '../services/scheduleService';
 import { Request, Response, NextFunction } from 'express';
 import { ScheduleInput } from '../types';
 import AppError from '../utils/AppError';

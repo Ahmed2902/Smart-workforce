@@ -1,6 +1,6 @@
 import { Response, Request } from 'express';
 
-import * as service from '../services/payrollService';
+import service from '../services/payrollService';
 
 export const calculatePayroll = async (req: Request, res: Response) => {
   const { employeeId, period } = req.body;

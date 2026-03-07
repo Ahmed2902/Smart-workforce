@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { attendanceService } from '../services/attendanceService';
+import attendanceService from '../services/attendanceService';
 import AppError from '../utils/appError';
 
 export const checkIn = async (
@@ -9,7 +9,7 @@ export const checkIn = async (
 ) => {
   try {
     const { attendanceId } = req.body;
-    const attendance = await attendanceService.CheckIn(attendanceId);
+    const attendance = await attendanceService.checkIn(attendanceId);
     res.status(200).json({
       status: 'success',
       message: 'employee checked in succesffuly',
@@ -27,7 +27,7 @@ export const checkOut = async (
 ) => {
   try {
     const { attendanceId } = req.body;
-    const attendance = await attendanceService.CheckOut(attendanceId);
+    const attendance = await attendanceService.checkOut(attendanceId);
     res.status(200).json({
       status: 'success',
       message: 'Employee checked out successfully',

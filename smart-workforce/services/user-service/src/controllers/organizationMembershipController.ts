@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import * as membershipService from '../services/organizationMembershipService';
+import membershipService from '../services/organizationMembershipService';
 import { Role } from '@prisma/client';
 
 export const addMember = async (

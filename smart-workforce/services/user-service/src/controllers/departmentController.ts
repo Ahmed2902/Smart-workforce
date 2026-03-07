@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import * as deptService from '../services/departmentService';
+import deptService from '../services/departmentService';
 
 export const createDepartment = async (
   req: Request,

@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
-import * as service from '../services/shiftService';
-import * as assignService from '../services/assignmentService';
+import service from '../services/shiftService';
+import assignService from '../services/assignmentService';
 import { ShiftInput, shiftAssignmentInput } from '../types';
 
 export const createShift = async (
@@ -94,7 +93,7 @@ export const unassignEmployee = async (
   next: NextFunction,
 ) => {
   try {
-    const assignment = await assignService.unsassignEmployee(
+    const assignment = await assignService.unassignEmployee(
       req.params.shiftId,
       req.params.employeeId,
     );
