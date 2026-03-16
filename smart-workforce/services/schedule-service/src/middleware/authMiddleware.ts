@@ -22,15 +22,25 @@ export const protect = async (
   next: NextFunction,
 ) => {
   if (req.header('x-gateway-token') === gatewayToken) {
-    const id = req.header('x-user-id');
+    const authUserId = req.header('x-user-id');
     const email = req.header('x-user-email') || '';
     const role = req.header('x-user-role') || '';
 
-    if (!id || !role) {
+    if (!authUserId || !role) {
       return next(new AppError('Missing forwarded auth headers', 401));
     }
 
-    req.user = { id, email, role };
+    // Resolve cached user by email to map to user-service UUID
+    const cachedUser = await prisma.cachedUser.findUnique({
+      where: { email },
+      select: { id: true },
+    });
+
+    if (!cachedUser?.id) {
+      return next(new AppError('User not found in cache', 401));
+    }
+
+    req.user = { id: cachedUser.id, email, role };
     return next();
   }
 

@@ -76,3 +76,14 @@ export const protect = (
     return res.status(401).json({ message: 'Invalid or expired token.' });
   }
 };
+
+export const restrictTo = (...roles: string[]) => {
+  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
+    if (!req.user || !req.user.role || !roles.includes(req.user.role)) {
+      return res
+        .status(403)
+        .json({ message: 'Forbidden: insufficient permissions' });
+    }
+    next();
+  };
+};

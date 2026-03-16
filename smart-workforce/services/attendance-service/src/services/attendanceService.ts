@@ -15,6 +15,24 @@ import {
 import prisma from '../prismaClient';
 
 export class attendance {
+  async createAttendanceRecord(
+    employeeId: string,
+    shiftId?: string,
+    status: AttendanceStatus = AttendanceStatus.SCHEDULED,
+  ) {
+    if (!employeeId) {
+      throw new AppError('employeeId is required', 400);
+    }
+
+    return prisma.attendance.create({
+      data: {
+        employeeId,
+        shiftId,
+        status,
+      },
+    });
+  }
+
   async CheckIn(id: string) {
     const lockKey = `lock:checkin:${id}`;
     const lockAcquired = await acquireLock(lockKey, 30); // 30 second lock

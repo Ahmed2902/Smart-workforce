@@ -1,5 +1,8 @@
 import { getChannel, connectRabbit } from './rabbit';
-import prisma from '../prismaClient';
+import {
+  handleShiftAssigned,
+  handleShiftUnassigned,
+} from '../services/eventSyncService';
 
 const SCHEDULE_EXCHANGE = 'schedule';
 const USER_EXCHANGE = 'user';
@@ -49,29 +52,21 @@ export const consumeExternalEvents = async () => {
       const { type, data } = event;
 
       if (type === 'ShiftAssigned') {
-        // When a user is assigned a shift → prepare attendance record
-        await prisma.attendance.create({
-          data: {
-            employeeId: data.employeeId,
-            shiftId: data.shiftId,
-          },
-        });
+        await handleShiftAssigned(data);
         console.log(
-          `✅ Attendance record prepared for employee ${data.employeeId}`,
+          `Attendance record prepared for employee ${data.employeeId}`,
         );
       }
 
       if (type === 'ShiftUnassigned') {
-        await prisma.attendance.deleteMany({
-          where: { shiftId: data.shiftId, employeeId: data.employeeId },
-        });
-        console.log(`🗑️ Attendance record removed for unassigned employee`);
+        await handleShiftUnassigned(data);
+        console.log(`Attendance record removed for unassigned employee`);
       }
 
       safeAck(channel, msg);
     } catch (err) {
       console.error(
-        '[Attendance Consumer] ❌ Failed to process schedule event:',
+        '[Attendance Consumer] Failed to process schedule event:',
         err,
       );
       safeNack(channel, msg);

@@ -2,12 +2,32 @@ import prisma from '../prismaClient';
 import * as producer from '../events/userProducer';
 import { Role } from '@prisma/client';
 import { deleteCache } from '@swma/shared';
+import { requireOrgAdmin } from './authHelpers';
+
+type Requester = { id: string; systemRole?: string };
+type AuthOptions = { skipAuth?: boolean };
+
+const ensureAuthorized = async (
+  requester: Requester | null,
+  organizationId: string,
+  options?: AuthOptions,
+) => {
+  if (options?.skipAuth) return;
+  if (!requester?.id) {
+    throw new Error('Requester not found');
+  }
+  if (requester.systemRole === 'SUPERADMIN') return;
+  await requireOrgAdmin(requester.id, organizationId);
+};
 
 export async function addUserToOrganization(
+  requester: Requester | null,
   userId: string,
   organizationId: string,
   role: Role = 'EMPLOYEE',
+  options?: AuthOptions,
 ) {
+  await ensureAuthorized(requester, organizationId, options);
   // Check if organization exists
   const organization = await prisma.organization.findUnique({
     where: { id: organizationId },
@@ -27,17 +47,17 @@ export async function addUserToOrganization(
     throw new Error('User not found');
   }
 
-  // Create membership
-  const membership = await prisma.organizationMembership.create({
-    data: {
-      userId,
-      organizationId,
-      role,
+  // Create or update membership (idempotent for events)
+  const membership = await prisma.organizationMembership.upsert({
+    where: {
+      userId_organizationId: {
+        userId,
+        organizationId,
+      },
     },
-    include: {
-      user: true,
-      organization: true,
-    },
+    update: { role },
+    create: { userId, organizationId, role },
+    include: { user: true, organization: true },
   });
 
   // Invalidate org members cache
@@ -65,10 +85,13 @@ export async function addUserToOrganization(
 }
 
 export async function updateMembershipRole(
+  requester: Requester | null,
   userId: string,
   organizationId: string,
   role: Role,
+  options?: AuthOptions,
 ) {
+  await ensureAuthorized(requester, organizationId, options);
   const membership = await prisma.organizationMembership.update({
     where: {
       userId_organizationId: {
@@ -107,9 +130,12 @@ export async function updateMembershipRole(
 }
 
 export async function removeUserFromOrganization(
+  requester: Requester | null,
   userId: string,
   organizationId: string,
+  options?: AuthOptions,
 ) {
+  await ensureAuthorized(requester, organizationId, options);
   const membership = await prisma.organizationMembership.delete({
     where: {
       userId_organizationId: {
@@ -153,10 +179,13 @@ export async function getUserMemberships(userId: string) {
 }
 
 export async function getOrganizationMembers(
+  requester: Requester | null,
   organizationId: string,
   page = 1,
   limit = 10,
+  options?: AuthOptions,
 ) {
+  await ensureAuthorized(requester, organizationId, options);
   const skip = (page - 1) * limit;
   const cacheKey = `user:org:${organizationId}:members:page:${page}`;
 

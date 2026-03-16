@@ -20,6 +20,27 @@ export const checkIn = async (
   }
 };
 
+export const createAttendanceRecord = async (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
+  try {
+    const { employeeId, shiftId, status } = req.body;
+    const attendance = await attendanceService.createAttendanceRecord(
+      employeeId,
+      shiftId,
+      status,
+    );
+    res.status(201).json({
+      status: 'success',
+      data: attendance,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 export const checkOut = async (
   req: Request,
   res: Response,
@@ -43,14 +64,18 @@ export const getEmployeeAttendance = async (
   res: Response,
   next: NextFunction,
 ) => {
-  const { employeeId } = req.params;
+  try {
+    const { employeeId } = req.params;
 
-  const records = await attendanceService.getEmployeeAttendance(employeeId);
-  res.status(200).json({
-    status: 'success',
-    results: records.length,
-    data: records,
-  });
+    const records = await attendanceService.getEmployeeAttendance(employeeId);
+    res.status(200).json({
+      status: 'success',
+      results: records.length,
+      data: records,
+    });
+  } catch (err) {
+    next(err);
+  }
 };
 
 export const getEmployeeHours = async (
@@ -58,15 +83,19 @@ export const getEmployeeHours = async (
   res: Response,
   next: NextFunction,
 ) => {
-  const { employeeId } = req.params;
-  const { period } = req.query; // format: YYYY-MM
-  const { totalHours, overtimeHours } =
-    await attendanceService.getEmployeeHours(employeeId, period as string);
+  try {
+    const { employeeId } = req.params;
+    const { period } = req.query; // format: YYYY-MM
+    const { totalHours, overtimeHours } =
+      await attendanceService.getEmployeeHours(employeeId, period as string);
 
-  return res.status(200).json({
-    employeeId,
-    period,
-    totalHours: parseFloat(totalHours.toFixed(2)),
-    overtimeHours: parseFloat(overtimeHours.toFixed(2)),
-  });
+    return res.status(200).json({
+      employeeId,
+      period,
+      totalHours: parseFloat(totalHours.toFixed(2)),
+      overtimeHours: parseFloat(overtimeHours.toFixed(2)),
+    });
+  } catch (err) {
+    return next(err);
+  }
 };

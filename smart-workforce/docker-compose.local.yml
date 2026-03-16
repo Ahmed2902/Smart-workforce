@@ -134,6 +134,8 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
+      ALLOW_BOOTSTRAP_ADMIN: ${ALLOW_BOOTSTRAP_ADMIN:-true}
     command: sh -c "npm run prisma:deploy && npm run start"
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3001/health || exit 1']
@@ -160,6 +162,8 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
+      BOOTSTRAP_SUPERADMIN_EMAIL: ${BOOTSTRAP_SUPERADMIN_EMAIL:-admin@example.com}
+      ALLOW_BOOTSTRAP_SUPERADMIN: ${ALLOW_BOOTSTRAP_SUPERADMIN:-true}
     command: sh -c "npm run prisma:deploy && npm run start"
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3002/health || exit 1']

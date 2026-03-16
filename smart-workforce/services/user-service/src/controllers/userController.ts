@@ -73,10 +73,15 @@ export const updateMe = async (
   next: NextFunction,
 ) => {
   try {
-    const id = (req as any).user?.id;
-    if (!id) return res.status(400).json({ message: 'id unavailable' });
+    const authUserId =
+      (req as any).user?.authUserId || (req as any).user?.id;
+    if (!authUserId)
+      return res.status(400).json({ message: 'id unavailable' });
     const { name, phone } = req.body;
-    const updatedUser = await userService.updateMe(id, { name, phone });
+    const updatedUser = await userService.updateMe(authUserId, {
+      name,
+      phone,
+    });
     res.status(200).json({ status: 'success', data: updatedUser });
   } catch (err) {
     next(err);

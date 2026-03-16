@@ -1,9 +1,14 @@
 $ErrorActionPreference = 'Stop'
 
-Write-Host '[1/4] Gateway health...'
-$health = Invoke-WebRequest -Uri 'http://localhost:8080/health' -UseBasicParsing
-if ($health.StatusCode -ne 200) { throw "Expected 200 from /health, got $($health.StatusCode)" }
-Write-Host "OK /health => $($health.StatusCode)"
+Write-Host '[1/4] Gateway health should be internal-only (external => 403)...'
+try {
+  Invoke-WebRequest -Uri 'http://localhost:8080/health' -UseBasicParsing | Out-Null
+  throw 'Expected 403 for /health but request succeeded'
+} catch {
+  $status = $_.Exception.Response.StatusCode.value__
+  if ($status -ne 403) { throw "Expected 403 from /health, got $status" }
+  Write-Host "OK /health => $status"
+}
 
 Write-Host '[2/4] Protected route without token should return 401...'
 try {

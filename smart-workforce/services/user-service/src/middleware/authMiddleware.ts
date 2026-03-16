@@ -14,15 +14,34 @@ export const protect = async (
   next: NextFunction,
 ) => {
   if (req.header('x-gateway-token') === gatewayToken) {
-    const id = req.header('x-user-id');
-    const email = req.header('x-user-email') || '';
-    const role = req.header('x-user-role') || '';
-
-    if (!id || !role) {
+    const authUserId = req.header('x-user-id');
+    if (!authUserId) {
       return res.status(401).json({ message: 'Missing forwarded auth headers' });
     }
 
-    req.user = { id, email, role };
+    const user = await prisma.user.findUnique({
+      where: { authUserId },
+      select: {
+        id: true,
+        authUserId: true,
+        email: true,
+        systemRole: true,
+        isActive: true,
+      },
+    });
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({ message: 'The user no longer exists' });
+    }
+
+    req.user = {
+      id: user.id,
+      authUserId: user.authUserId,
+      email: user.email,
+      role: user.systemRole,
+      systemRole: user.systemRole,
+    };
+
     return next();
   }
 
@@ -55,8 +74,10 @@ export const protect = async (
 
     req.user = {
       id: user.id,
+      authUserId: user.authUserId,
       email: user.email,
       role: user.systemRole,
+      systemRole: user.systemRole,
     };
 
     return next();
@@ -67,7 +88,8 @@ export const protect = async (
 
 export const restrictTo = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    const role = req.user?.systemRole || req.user?.role;
+    if (!req.user || !role || !roles.includes(role)) {
       return res
         .status(403)
         .json({ message: 'Forbidden: insufficient permissions' });

@@ -1,5 +1,14 @@
 import { getChannel, connectRabbit } from './rabbit';
-import prisma from '../prismaClient';
+import {
+  syncDepartmentDelete,
+  syncDepartmentUpsert,
+  syncMembershipRemoval,
+  syncMembershipUpsert,
+  syncOrganizationDelete,
+  syncOrganizationUpsert,
+  syncUserDelete,
+  syncUserUpsert,
+} from '../services/eventSyncService';
 
 // Exchanges
 const USER_EXCHANGE = 'user';
@@ -60,87 +69,52 @@ export const consumeExternalEvents = async () => {
       const data = event.data || {};
 
       if (type === 'UserMembershipAdded' || type === 'UserMembershipUpdated') {
-        const { user, organization, role } = data;
-        if (!user?.id || !user?.email || !organization?.id) {
+        try {
+          await syncMembershipUpsert(data);
+          console.log('CachedUser synced (membership).');
+        } catch (err) {
           console.warn(
             '[Schedule Consumer] Missing user/org fields in membership event',
           );
           safeAck(channel, msg);
           return;
         }
-
-        await prisma.cachedUser.upsert({
-          where: { id: user.id },
-          update: {
-            email: user.email,
-            name: user.name,
-            role: role,
-            organizationId: organization.id,
-          },
-          create: {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            role: role,
-            organizationId: organization.id,
-          },
-        });
-        console.log(`✅ CachedUser ${user.email} synced (membership).`);
       } else if (type === 'UserMembershipRemoved') {
-        const { user } = data;
-        if (!user?.id) {
+        try {
+          await syncMembershipRemoval(data);
+          console.log('CachedUser membership removed.');
+        } catch (err) {
           console.warn(
             '[Schedule Consumer] Missing user id in membership removal',
           );
           safeAck(channel, msg);
           return;
         }
-
-        await prisma.cachedUser.updateMany({
-          where: { id: user.id },
-          data: { organizationId: 'unassigned', departmentId: null },
-        });
-
-        console.log(
-          `✅ CachedUser ${user.email} organization membership removed.`,
-        );
       } else if (type === 'UserRegistered' || type === 'UserUpdated') {
-        const id = data.id ?? data.authUserId;
-        const name = data.name ?? 'New User';
-        const email = data.email;
-        const role = data.systemRole ?? data.role ?? 'EMPLOYEE';
-
-        if (!id || !email) {
-          console.warn(
-            '[Schedule Consumer] Missing fields for UserRegistered:',
-            { id, email },
-          );
+        try {
+          await syncUserUpsert(data);
+          console.log('CachedUser created/updated (no org membership).');
+        } catch (err) {
+          console.warn('[Schedule Consumer] Missing fields for UserRegistered', {
+            id: data.id ?? data.authUserId,
+            email: data.email,
+          });
           safeAck(channel, msg);
           return;
         }
-
-        // If no organization info exists, just create the user directly
-        await prisma.cachedUser.upsert({
-          where: { id },
-          update: { email, name, role },
-          create: { id, email, name, role, organizationId: 'unassigned' },
-        });
-
-        console.log(
-          `✅ CachedUser ${email} created/updated (no org membership).`,
-        );
       } else if (type === 'UserDeleted') {
-        const id = data.id ?? data.authUserId;
-        await prisma.cachedUser.deleteMany({ where: { id } });
-        console.log(`🗑️ CachedUser ${id} deleted.`);
+        try {
+          await syncUserDelete(data);
+          console.log('CachedUser deleted.');
+        } catch (err) {
+          safeAck(channel, msg);
+          return;
+        }
       }
 
       safeAck(channel, msg);
     } catch (err) {
-      console.error(
-        '[Schedule Consumer] ❌ Failed to process user event:',
-        err,
-      );
+      console.error('[Schedule Consumer] Failed to process user event:', err);
       safeNack(channel, msg);
     }
   });
@@ -157,22 +131,18 @@ export const consumeExternalEvents = async () => {
       const data = event.data;
 
       if (['OrganizationCreated', 'OrganizationUpdated'].includes(event.type)) {
-        await prisma.cachedOrganization.upsert({
-          where: { id: data.id },
-          update: { name: data.name },
-          create: { id: data.id, name: data.name },
-        });
-        console.log(`✅ CachedOrganization ${data.name} synced`);
+        await syncOrganizationUpsert(data);
+        console.log(`CachedOrganization ${data.name} synced`);
       }
 
       if (event.type === 'OrganizationDeleted') {
-        await prisma.cachedOrganization.deleteMany({ where: { id: data.id } });
-        console.log(`🗑️ CachedOrganization ${data.id} deleted`);
+        await syncOrganizationDelete(data);
+        console.log(`CachedOrganization ${data.id} deleted`);
       }
 
       safeAck(channel, msg);
     } catch (err) {
-      console.error('[Schedule Consumer] ❌ Failed to process org event:', err);
+      console.error('[Schedule Consumer] Failed to process org event:', err);
       safeNack(channel, msg);
     }
   });
@@ -189,32 +159,18 @@ export const consumeExternalEvents = async () => {
       const data = event.data;
 
       if (['DepartmentCreated', 'DepartmentUpdated'].includes(event.type)) {
-        await prisma.cachedDepartment.upsert({
-          where: { id: data.id },
-          update: {
-            name: data.name,
-            organizationId: data.organizationId,
-          },
-          create: {
-            id: data.id,
-            name: data.name,
-            organizationId: data.organizationId,
-          },
-        });
-        console.log(`✅ CachedDepartment ${data.name} synced`);
+        await syncDepartmentUpsert(data);
+        console.log(`CachedDepartment ${data.name} synced`);
       }
 
       if (event.type === 'DepartmentDeleted') {
-        await prisma.cachedDepartment.deleteMany({ where: { id: data.id } });
-        console.log(`🗑️ CachedDepartment ${data.id} deleted`);
+        await syncDepartmentDelete(data);
+        console.log(`CachedDepartment ${data.id} deleted`);
       }
 
       safeAck(channel, msg);
     } catch (err) {
-      console.error(
-        '[Schedule Consumer] ❌ Failed to process dept event:',
-        err,
-      );
+      console.error('[Schedule Consumer] Failed to process dept event:', err);
       safeNack(channel, msg);
     }
   });

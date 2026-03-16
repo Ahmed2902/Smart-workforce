@@ -20,8 +20,28 @@ export const createUser = async (
   if (existingauthUser) throw new AppError('authUser already exists', 400);
 
   const hashedPassword = await bcrypt.hash(password, 10);
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const bootstrapEmail = (process.env.BOOTSTRAP_ADMIN_EMAIL || '')
+    .trim()
+    .toLowerCase();
+  const allowFirstAdmin = process.env.ALLOW_BOOTSTRAP_ADMIN === 'true';
+
+  let role: 'ADMIN' | 'MANAGER' | 'SUPERVISOR' | 'EMPLOYEE' = 'EMPLOYEE';
+  if (bootstrapEmail && normalizedEmail === bootstrapEmail) {
+    role = 'ADMIN';
+  } else if (allowFirstAdmin) {
+    const existingAdmin = await prisma.authUser.findFirst({
+      where: { role: 'ADMIN' },
+      select: { id: true },
+    });
+    if (!existingAdmin) {
+      role = 'ADMIN';
+    }
+  }
+
   const authUser = await prisma.authUser.create({
-    data: { email, passwordHash: hashedPassword },
+    data: { email, passwordHash: hashedPassword, role },
   });
   return authUser;
 };

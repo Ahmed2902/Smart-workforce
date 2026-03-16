@@ -1,6 +1,5 @@
 import { getChannel, connectRabbit } from './rabbit';
-import * as producer from './userProducer';
-import prisma from '../prismaClient';
+import { handleUserRegistered } from '../services/userEventService';
 
 const EXCHANGE = 'user';
 const ROUTING_KEY = 'user.created';
@@ -38,7 +37,7 @@ export const consumeUserEvents = async () => {
       const raw = msg.content.toString();
       console.log('[User Consumer] Raw message:', raw);
       const event = JSON.parse(raw);
-      console.log('📩 User Service received parsed event:', event);
+      console.log('[User Consumer] Parsed event:', event);
 
       if (event.type === 'UserRegistered') {
         const data = event.data;
@@ -48,83 +47,14 @@ export const consumeUserEvents = async () => {
             data,
           );
         } else {
-          // Create user and automatically add to default organization
-          const user = await prisma.user.upsert({
-            where: { authUserId: data.authUserId },
-            update: {
-              email: data.email,
-              name: data.name ?? undefined,
-              phone: data.phone ?? undefined,
-              systemRole: data.systemRole ?? 'USER',
-              role: data.role ?? 'EMPLOYEE',
-            },
-            create: {
-              authUserId: data.authUserId,
-              email: data.email,
-              name: data.name ?? 'New User',
-              phone: data.phone ?? undefined,
-              systemRole: data.systemRole ?? 'USER',
-              role: data.role ?? 'EMPLOYEE',
-            },
-          });
-          console.log(
-            `✅ User ${data.email} upserted into User DB (authUserId=${data.authUserId})`,
-          );
-
-          // Find default organization or create one if it doesn't exist
-          let defaultOrg = await prisma.organization.findFirst({
-            where: { name: 'Default Organization' },
-          });
-
-          if (!defaultOrg) {
-            defaultOrg = await prisma.organization.create({
-              data: {
-                name: 'Default Organization',
-                description: 'Default organization for all users',
-              },
-            });
-            // Publish organization created event
-            await producer.publishOrganizationCreated(defaultOrg);
-          }
-
-          // Add user to default organization
-          const membership = await prisma.organizationMembership.create({
-            data: {
-              userId: user.id,
-              organizationId: defaultOrg.id,
-              role: data.role ?? 'EMPLOYEE',
-            },
-            include: {
-              user: true,
-              organization: true,
-            },
-          });
-
-          // Publish membership event so schedule-service can create the user
-          await producer.publishUserMembershipAdded({
-            userId: user.id,
-            organizationId: defaultOrg.id,
-            role: membership.role,
-            user: {
-              id: user.id,
-              authUserId: user.authUserId,
-              email: user.email,
-              name: user.name,
-              systemRole: user.systemRole,
-            },
-            organization: {
-              id: defaultOrg.id,
-              name: defaultOrg.name,
-            },
-          });
-
-          console.log(`✅ User ${data.email} added to default organization`);
+          await handleUserRegistered(data);
+          console.log(`User ${data.email} processed (registration event).`);
         }
       }
 
       channel.ack(msg);
     } catch (err) {
-      console.error('❌ Failed to process event:', err);
+      console.error('Failed to process event:', err);
       channel.nack(msg, false, true); // requeue
     }
   });

@@ -10,6 +10,7 @@ export const addMember = async (
   try {
     const { organizationId } = req.params;
     const { userId, role = 'EMPLOYEE' } = req.body;
+    const requester = (req as any).user;
 
     if (!userId) {
       return res.status(400).json({
@@ -19,6 +20,7 @@ export const addMember = async (
     }
 
     const membership = await membershipService.addUserToOrganization(
+      requester,
       userId,
       organizationId,
       role as Role,
@@ -29,6 +31,16 @@ export const addMember = async (
       data: membership,
     });
   } catch (err) {
+    if (
+      (err as Error).message?.includes('Only organization admins') ||
+      (err as Error).message?.includes('Organization membership not found') ||
+      (err as Error).message?.includes('Requester not found')
+    ) {
+      return res.status(403).json({
+        status: 'error',
+        message: (err as Error).message,
+      });
+    }
     next(err);
   }
 };
@@ -41,6 +53,7 @@ export const updateMemberRole = async (
   try {
     const { organizationId, userId } = req.params;
     const { role } = req.body;
+    const requester = (req as any).user;
 
     if (!role) {
       return res.status(400).json({
@@ -50,6 +63,7 @@ export const updateMemberRole = async (
     }
 
     const membership = await membershipService.updateMembershipRole(
+      requester,
       userId,
       organizationId,
       role as Role,
@@ -60,6 +74,16 @@ export const updateMemberRole = async (
       data: membership,
     });
   } catch (err) {
+    if (
+      (err as Error).message?.includes('Only organization admins') ||
+      (err as Error).message?.includes('Organization membership not found') ||
+      (err as Error).message?.includes('Requester not found')
+    ) {
+      return res.status(403).json({
+        status: 'error',
+        message: (err as Error).message,
+      });
+    }
     next(err);
   }
 };
@@ -71,11 +95,26 @@ export const removeMember = async (
 ) => {
   try {
     const { organizationId, userId } = req.params;
+    const requester = (req as any).user;
 
-    await membershipService.removeUserFromOrganization(userId, organizationId);
+    await membershipService.removeUserFromOrganization(
+      requester,
+      userId,
+      organizationId,
+    );
 
     res.status(204).send();
   } catch (err) {
+    if (
+      (err as Error).message?.includes('Only organization admins') ||
+      (err as Error).message?.includes('Organization membership not found') ||
+      (err as Error).message?.includes('Requester not found')
+    ) {
+      return res.status(403).json({
+        status: 'error',
+        message: (err as Error).message,
+      });
+    }
     next(err);
   }
 };
@@ -87,11 +126,13 @@ export const getOrganizationMembers = async (
 ) => {
   try {
     const { organizationId } = req.params;
+    const requester = (req as any).user;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
 
     const { memberships, total } =
       await membershipService.getOrganizationMembers(
+        requester,
         organizationId,
         page,
         limit,
@@ -106,6 +147,16 @@ export const getOrganizationMembers = async (
       data: memberships,
     });
   } catch (err) {
+    if (
+      (err as Error).message?.includes('Only organization admins') ||
+      (err as Error).message?.includes('Organization membership not found') ||
+      (err as Error).message?.includes('Requester not found')
+    ) {
+      return res.status(403).json({
+        status: 'error',
+        message: (err as Error).message,
+      });
+    }
     next(err);
   }
 };
@@ -117,6 +168,17 @@ export const getUserMemberships = async (
 ) => {
   try {
     const { userId } = req.params;
+    const requester = (req as any).user;
+
+    if (
+      requester?.systemRole !== 'SUPERADMIN' &&
+      requester?.id !== userId
+    ) {
+      return res.status(403).json({
+        status: 'error',
+        message: 'Forbidden: insufficient permissions',
+      });
+    }
 
     const memberships = await membershipService.getUserMemberships(userId);
 
