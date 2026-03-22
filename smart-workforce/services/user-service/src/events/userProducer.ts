@@ -36,7 +36,8 @@ export const publishUserCreated = async (user: any) => {
       phone: user.phone ?? null,
       organizationId: user.organizationId ?? null,
       departmentId: user.departmentId ?? null,
-      systemRole: user.systemRole ?? 'EMPLOYEE',
+      systemRole: user.systemRole ?? 'USER',
+      isActive: user.isActive ?? true,
     },
     timestamp: new Date().toISOString(),
   };
@@ -55,7 +56,8 @@ export const publishUserUpdated = async (user: any) => {
       phone: user.phone ?? null,
       organizationId: user.organizationId ?? null,
       departmentId: user.departmentId ?? null,
-      systemRole: user.systemRole ?? null,
+      systemRole: user.systemRole ?? 'USER',
+      isActive: user.isActive ?? true,
     },
     timestamp: new Date().toISOString(),
   };

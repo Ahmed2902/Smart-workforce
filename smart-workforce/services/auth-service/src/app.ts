@@ -14,9 +14,14 @@ import cookieParser from 'cookie-parser';
 import prisma from './prismaClient';
 import * as jwtUtil from './utils/jwt';
 
+const authGlobalWindowMs = Number(
+  process.env.AUTH_GLOBAL_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000,
+);
+const authGlobalMax = Number(process.env.AUTH_GLOBAL_RATE_LIMIT_MAX || 100);
+
 const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 min
-  max: 100, // 100 reqs per IP per window
+  windowMs: authGlobalWindowMs,
+  max: authGlobalMax,
   standardHeaders: true,
   legacyHeaders: false,
 });

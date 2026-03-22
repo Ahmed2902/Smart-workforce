@@ -1,3 +1,4 @@
+import { Role, SystemRole } from '@prisma/client';
 import prisma from '../prismaClient';
 import * as producer from '../events/userProducer';
 import * as membershipService from './organizationMembershipService';
@@ -5,8 +6,8 @@ import * as membershipService from './organizationMembershipService';
 type UserRegisteredEvent = {
   authUserId: string;
   email: string;
-  role?: string;
-  systemRole?: string;
+  role?: Role;
+  systemRole?: SystemRole;
   name?: string;
   phone?: string;
 };
@@ -39,10 +40,10 @@ export async function handleUserRegistered(data: UserRegisteredEvent) {
   }
 
   const bootstrapSuperadmin = await shouldBootstrapSuperadmin(data.email);
-  const systemRole = bootstrapSuperadmin
+  const systemRole: SystemRole = bootstrapSuperadmin
     ? 'SUPERADMIN'
     : data.systemRole ?? 'USER';
-  const role = bootstrapSuperadmin ? 'ADMIN' : data.role ?? 'EMPLOYEE';
+  const role: Role = bootstrapSuperadmin ? 'ADMIN' : data.role ?? 'EMPLOYEE';
 
   const user = await prisma.user.upsert({
     where: { authUserId: data.authUserId },
@@ -81,10 +82,9 @@ export async function handleUserRegistered(data: UserRegisteredEvent) {
     null,
     user.id,
     defaultOrg.id,
-    role as any,
+    role,
     { skipAuth: true },
   );
 
   return { user, defaultOrg };
 }
-

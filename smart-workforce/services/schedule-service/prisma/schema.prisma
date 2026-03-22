@@ -90,6 +90,7 @@ model ShiftAssignment {
 
 model CachedUser {
   id             String   @id // same as user-service UUID
+  authUserId     String?  @unique
   name           String
   email          String   @unique
   organizationId String

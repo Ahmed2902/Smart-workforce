@@ -4,7 +4,7 @@ export const addMemberSchema = {
   body: z.object({
     userId: z.string().uuid(),
     role: z
-      .enum(['ADMIN', 'MANAGER', 'EMPLOYEE'])
+      .enum(['ADMIN', 'MANAGER', 'SUPERVISOR', 'EMPLOYEE'])
       .optional()
       .default('EMPLOYEE'),
   }),
@@ -15,7 +15,7 @@ export const addMemberSchema = {
 
 export const updateMemberRoleSchema = {
   body: z.object({
-    role: z.enum(['ADMIN', 'MANAGER', 'EMPLOYEE']),
+    role: z.enum(['ADMIN', 'MANAGER', 'SUPERVISOR', 'EMPLOYEE']),
   }),
   params: z.object({
     organizationId: z.string().uuid(),

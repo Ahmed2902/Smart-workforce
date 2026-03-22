@@ -1,13 +1,31 @@
 import AppError from '../utils/AppError';
-import { ShiftInput } from '../types';
+import { AuthenticatedUser, ShiftInput } from '../types';
 import prisma from '../prismaClient';
+import {
+  assertOrgWriteAccess,
+  assertSameOrganization,
+  isSuperadmin,
+} from '../utils/accessControl';
 
-export const createShift = async (data: ShiftInput) => {
+export const createShift = async (
+  actor: AuthenticatedUser,
+  data: ShiftInput,
+) => {
+  if (!data.createdById) {
+    throw new AppError('Creator is required', 401);
+  }
+
   const schedule = await prisma.schedule.findUnique({
     where: { id: data.scheduleId },
   });
 
   if (!schedule) throw new AppError('schedule not found', 404);
+
+  assertOrgWriteAccess(
+    actor,
+    schedule.organizationId,
+    'You can only manage shifts for your organization',
+  );
 
   if (data.startTime >= data.endTime) {
     throw new AppError('Shift start must be before end', 400);
@@ -19,7 +37,7 @@ export const createShift = async (data: ShiftInput) => {
   }
 
   // Create shift
-  return await prisma.shift.create({
+  return prisma.shift.create({
     data: {
       name: data.name,
       location: data.location,
@@ -29,35 +47,80 @@ export const createShift = async (data: ShiftInput) => {
         connect: { id: data.scheduleId },
       },
       user: {
-        connect: { id: data.CreatedBy },
+        connect: { id: data.createdById },
       },
     },
   });
 };
 
-export const getShifts = async (scheduleId?: string) => {
-  return await prisma.shift.findMany({
+export const getShifts = async (
+  actor: AuthenticatedUser,
+  scheduleId?: string,
+) => {
+  if (scheduleId) {
+    const schedule = await prisma.schedule.findUnique({
+      where: { id: scheduleId },
+    });
+
+    if (!schedule) {
+      throw new AppError('schedule not found', 404);
+    }
+
+    assertSameOrganization(
+      actor,
+      schedule.organizationId,
+      'You can only view shifts from your organization',
+    );
+  }
+
+  return prisma.shift.findMany({
     where: scheduleId
       ? {
           scheduleId,
         }
-      : undefined,
+      : isSuperadmin(actor)
+        ? undefined
+        : {
+            schedule: {
+              organizationId: actor.organizationId ?? undefined,
+            },
+          },
     include: { assignments: true },
   });
 };
 
-export const getShiftById = async (id: string) => {
+export const getShiftById = async (actor: AuthenticatedUser, id: string) => {
   const shift = await prisma.shift.findUnique({
     where: { id },
-    include: { assignments: { include: { employee: true } } },
+    include: { assignments: { include: { employee: true } }, schedule: true },
   });
   if (!shift) throw new AppError('Shift not found', 404);
+
+  assertSameOrganization(
+    actor,
+    shift.schedule?.organizationId,
+    'You can only view shifts from your organization',
+  );
+
   return shift;
 };
 
-export const updateShift = async (id: string, data: Partial<ShiftInput>) => {
-  const existing = await prisma.shift.findUnique({ where: { id } });
+export const updateShift = async (
+  actor: AuthenticatedUser,
+  id: string,
+  data: Partial<ShiftInput>,
+) => {
+  const existing = await prisma.shift.findUnique({
+    where: { id },
+    include: { schedule: true },
+  });
   if (!existing) throw new AppError('shift not found', 404);
+
+  assertOrgWriteAccess(
+    actor,
+    existing.schedule?.organizationId,
+    'You can only manage shifts for your organization',
+  );
 
   if (data.startTime && data.endTime && data.startTime >= data.endTime) {
     throw new AppError('Shift start must be before end', 400);
@@ -69,9 +132,19 @@ export const updateShift = async (id: string, data: Partial<ShiftInput>) => {
   });
 };
 
-export const deleteShift = async (id: string) => {
-  const shift = await prisma.shift.findUnique({ where: { id } });
+export const deleteShift = async (actor: AuthenticatedUser, id: string) => {
+  const shift = await prisma.shift.findUnique({
+    where: { id },
+    include: { schedule: true },
+  });
   if (!shift) throw new AppError('shift not found', 404);
+
+  assertOrgWriteAccess(
+    actor,
+    shift.schedule?.organizationId,
+    'You can only manage shifts for your organization',
+  );
+
   await prisma.shiftAssignment.deleteMany({ where: { shiftId: id } });
-  return await prisma.shift.delete({ where: { id } });
+  return prisma.shift.delete({ where: { id } });
 };

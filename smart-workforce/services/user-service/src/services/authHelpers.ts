@@ -4,7 +4,7 @@ export type OrgMembership = {
   id: string;
   userId: string;
   organizationId: string;
-  role: 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
+  role: 'ADMIN' | 'MANAGER' | 'SUPERVISOR' | 'EMPLOYEE';
 };
 
 // Use dynamic access to avoid compile-time mismatches with generated prisma client types

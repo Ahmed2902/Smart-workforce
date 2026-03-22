@@ -7,7 +7,8 @@ export const createOrganization = async (
   next: NextFunction,
 ) => {
   try {
-    const org = await orgService.createOrganization(req.body);
+    const requester = (req as any).user;
+    const org = await orgService.createOrganization(req.body, requester);
     res.status(201).json({ status: 'success', data: org });
   } catch (err: any) {
     next(err);

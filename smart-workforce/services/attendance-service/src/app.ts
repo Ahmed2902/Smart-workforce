@@ -20,8 +20,9 @@ app.use('/api/attendance', attendanceRoutes);
 
 app.use((err: any, req: any, res: any, next: any) => {
   console.error('[Global Error Handler]', err);
+  const statusCode = err?.statusCode || 500;
   res
-    .status(500)
+    .status(statusCode)
     .json({ status: 'error', message: err.message || 'Internal Server Error' });
 });
 

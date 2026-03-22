@@ -12,7 +12,8 @@ export const calculatePayroll = async (req: Request, res: Response) => {
     });
   } catch (err: any) {
     const message = err?.message || 'Failed to calculate payroll';
-    res.status(502).json({ status: 'error', message });
+    const status = message.includes('Failed to fetch employee hours') ? 502 : 400;
+    res.status(status).json({ status: 'error', message });
   }
 };
 

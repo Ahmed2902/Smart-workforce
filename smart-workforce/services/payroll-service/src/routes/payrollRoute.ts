@@ -6,10 +6,18 @@ const router = express.Router();
 
 router.use(protect);
 router.get('/', controller.getAllPayrolls);
-router.post('/', controller.createPayroll);
 router.get('/:id', controller.getPayrollById);
-router.post('/calculate', controller.calculatePayroll);
-router.patch('/:id', controller.updatePayroll);
-router.delete('/:id', controller.deletePayroll);
+router.post('/', restrictTo('ADMIN', 'MANAGER'), controller.createPayroll);
+router.post(
+  '/calculate',
+  restrictTo('ADMIN', 'MANAGER'),
+  controller.calculatePayroll,
+);
+router.patch('/:id', restrictTo('ADMIN', 'MANAGER'), controller.updatePayroll);
+router.delete(
+  '/:id',
+  restrictTo('ADMIN', 'MANAGER'),
+  controller.deletePayroll,
+);
 
 export default router;

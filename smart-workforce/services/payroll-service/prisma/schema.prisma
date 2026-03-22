@@ -26,6 +26,16 @@ model Payroll {
 
 }
 
+model EmployeeState {
+  employeeId String   @id
+  isActive   Boolean  @default(true)
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@schema("payroll")
+}
+
 enum status {
   PENDING
   COMPLETED

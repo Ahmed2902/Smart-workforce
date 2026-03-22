@@ -73,19 +73,22 @@ describe('Full integration flow', () => {
   jest.setTimeout(TIMEOUT_MS);
 
   const adminEmail = process.env.INTEGRATION_ADMIN_EMAIL || 'admin@example.com';
-  const adminPassword =
-    process.env.INTEGRATION_ADMIN_PASSWORD || 'Password1!';
-  const employeeEmail = `emp-${Date.now()}@example.com`;
-  const employeePassword = 'Password1!';
+  const adminPassword = process.env.INTEGRATION_ADMIN_PASSWORD || 'Password1!';
+  const employeeEmail =
+    process.env.INTEGRATION_EMPLOYEE_EMAIL ||
+    'employee.integration@example.com';
+  const employeePassword =
+    process.env.INTEGRATION_EMPLOYEE_PASSWORD || 'Password1!';
 
   let adminToken;
   let employeeToken;
   let adminUserId;
+  let employeeUserId;
+  let employeeAuthUserId;
   let orgId;
   let deptId;
   let scheduleId;
   let shiftId;
-  let attendanceId;
 
   const authHeaders = () => ({ Authorization: `Bearer ${adminToken}` });
 
@@ -105,8 +108,14 @@ describe('Full integration flow', () => {
     if (res.status === 201) return;
 
     const payload = json(res.body) || {};
-    if (res.status === 400 && String(payload?.message || '').includes('exists')) {
+    if (
+      res.status === 400 &&
+      String(payload?.message || '').includes('exists')
+    ) {
       return;
+    }
+    if (res.status === 429) {
+      throw new Error(`RATE_LIMITED ${res.body}`);
     }
 
     throw new Error(`Register failed: ${res.status} ${res.body}`);
@@ -126,13 +135,48 @@ describe('Full integration flow', () => {
     return { token: payload.token, authUser: payload.authUser };
   };
 
+  const ensureUser = async (email, password) => {
+    try {
+      return await login(email, password);
+    } catch (error) {
+      if (!String(error.message || '').includes('Login failed: 401')) {
+        throw error;
+      }
+    }
+
+    await retry(
+      async () => {
+        try {
+          await registerIfNeeded(email, password);
+        } catch (error) {
+          if (String(error.message || '').includes('RATE_LIMITED')) {
+            throw error;
+          }
+          if (
+            String(error.message || '').includes('exists') ||
+            String(error.message || '').includes('Register failed: 400')
+          ) {
+            return true;
+          }
+          throw error;
+        }
+        return true;
+      },
+      { attempts: 5, delayMs: 2000, label: `register user ${email}` },
+    );
+
+    return retry(() => login(email, password), {
+      attempts: 10,
+      delayMs: 1500,
+      label: `login user ${email}`,
+    });
+  };
+
   beforeAll(async () => {
-    await registerIfNeeded(adminEmail, adminPassword);
-    const adminLogin = await login(adminEmail, adminPassword);
+    const adminLogin = await ensureUser(adminEmail, adminPassword);
     adminToken = adminLogin.token;
 
-    await registerIfNeeded(employeeEmail, employeePassword);
-    const employeeLogin = await login(employeeEmail, employeePassword);
+    const employeeLogin = await ensureUser(employeeEmail, employeePassword);
     employeeToken = employeeLogin.token;
 
     if (!adminToken) {
@@ -159,49 +203,104 @@ describe('Full integration flow', () => {
     );
 
     const adminUser = usersPayload.data.find((u) => u.email === adminEmail);
-    if (!adminUser?.id) {
-      throw new Error('Admin user not found in user-service');
+    const employeeUser = usersPayload.data.find(
+      (u) => u.email === employeeEmail,
+    );
+    if (!adminUser?.id || !employeeUser?.id || !employeeUser?.authUserId) {
+      throw new Error('Admin or employee user not found in user-service');
     }
     adminUserId = adminUser.id;
+    employeeUserId = employeeUser.id;
+    employeeAuthUserId = employeeUser.authUserId;
 
-    const orgRes = await request({
-      method: 'POST',
+    const orgListRes = await request({
+      method: 'GET',
       path: '/api/organizations',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ name: `Org-${Date.now()}` }),
+      headers: authHeaders(),
     });
-
-    if (![201, 400].includes(orgRes.status)) {
-      throw new Error(`Org create failed: ${orgRes.status} ${orgRes.body}`);
+    if (orgListRes.status !== 200) {
+      throw new Error(
+        `Organization list failed: ${orgListRes.status} ${orgListRes.body}`,
+      );
     }
+    const orgListPayload = json(orgListRes.body) || {};
+    const organizations = orgListPayload?.data || [];
 
-    if (orgRes.status === 201) {
-      const orgPayload = json(orgRes.body) || {};
-      orgId = orgPayload?.data?.id || null;
-    } else {
-      // fallback to first org if created already
-      const listRes = await request({
+    for (const organization of organizations) {
+      const membersRes = await request({
         method: 'GET',
-        path: '/api/organizations',
+        path: `/api/organizations/${organization.id}/members`,
         headers: authHeaders(),
       });
-      const listPayload = json(listRes.body) || {};
-      orgId = listPayload?.data?.[0]?.id || null;
+
+      if (membersRes.status !== 200) {
+        continue;
+      }
+
+      const membersPayload = json(membersRes.body) || {};
+      const hasAdminMembership = (membersPayload?.data || []).some(
+        (membership) =>
+          membership?.userId === adminUserId && membership?.role === 'ADMIN',
+      );
+
+      if (hasAdminMembership) {
+        orgId = organization.id;
+        break;
+      }
     }
 
     if (!orgId) {
-      throw new Error('Organization id not resolved');
-    }
+      // Create an organization for the integration admin
+      const createOrgRes = await request({
+        method: 'POST',
+        path: '/api/organizations',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          name: `Integration Org-${Date.now()}`,
+          code: `ORG-${Date.now()}`,
+        }),
+      });
 
-    const addMemberRes = await request({
-      method: 'POST',
-      path: `/api/organizations/${orgId}/members`,
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ userId: adminUserId, role: 'ADMIN' }),
-    });
-    if (![201, 200].includes(addMemberRes.status)) {
-      throw new Error(
-        `Add member failed: ${addMemberRes.status} ${addMemberRes.body}`,
+      if (createOrgRes.status !== 201) {
+        throw new Error(
+          `Failed to create organization: ${createOrgRes.status} ${createOrgRes.body}`,
+        );
+      }
+
+      const createOrgPayload = json(createOrgRes.body) || {};
+      orgId = createOrgPayload?.data?.id;
+
+      if (!orgId) {
+        throw new Error('Organization created but no ID returned');
+      }
+
+      // Add admin user as admin member (usually happens automatically, but let's ensure it)
+      await retry(
+        async () => {
+          const meRes = await request({
+            method: 'GET',
+            path: `/api/organizations/${orgId}/members`,
+            headers: authHeaders(),
+          });
+
+          if (meRes.status !== 200) {
+            throw new Error(
+              `Failed to verify organization membership: ${meRes.status}`,
+            );
+          }
+
+          const mePayload = json(meRes.body) || {};
+          const isAdmin = (mePayload?.data || []).some(
+            (m) => m?.userId === adminUserId && m?.role === 'ADMIN',
+          );
+
+          if (!isAdmin) {
+            throw new Error(
+              'Admin user not automatically added to organization',
+            );
+          }
+        },
+        { attempts: 5, delayMs: 1000, label: 'verify organization membership' },
       );
     }
 
@@ -259,12 +358,13 @@ describe('Full integration flow', () => {
         scheduleId,
         startTime: new Date().toISOString(),
         endTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
-        CreatedBy: adminUserId,
         location: 'HQ',
       }),
     });
     if (shiftRes.status !== 200) {
-      throw new Error(`Shift create failed: ${shiftRes.status} ${shiftRes.body}`);
+      throw new Error(
+        `Shift create failed: ${shiftRes.status} ${shiftRes.body}`,
+      );
     }
     const shiftPayload = json(shiftRes.body) || {};
     shiftId = shiftPayload?.data?.id || null;
@@ -273,27 +373,13 @@ describe('Full integration flow', () => {
       method: 'POST',
       path: '/api/schedules/shiftAssignment',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ shiftId, employeeId: adminUserId }),
+      body: JSON.stringify({ shiftId, employeeId: employeeUserId }),
     });
     if (![201, 200].includes(assignRes.status)) {
       throw new Error(
         `Shift assign failed: ${assignRes.status} ${assignRes.body}`,
       );
     }
-
-    const attendanceRes = await request({
-      method: 'POST',
-      path: '/api/attendance',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ employeeId: adminUserId, shiftId }),
-    });
-    if (attendanceRes.status !== 201) {
-      throw new Error(
-        `Attendance create failed: ${attendanceRes.status} ${attendanceRes.body}`,
-      );
-    }
-    const attendancePayload = json(attendanceRes.body) || {};
-    attendanceId = attendancePayload?.data?.id || null;
   });
 
   test('auth me returns admin user', async () => {
@@ -340,6 +426,16 @@ describe('Full integration flow', () => {
   });
 
   test('attendance check-in/out and hours succeed', async () => {
+    const attendanceRes = await request({
+      method: 'POST',
+      path: '/api/attendance',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ employeeId: employeeUserId, shiftId }),
+    });
+    expect(attendanceRes.status).toBe(201);
+    const attendancePayload = json(attendanceRes.body) || {};
+    const attendanceId = attendancePayload?.data?.id;
+
     const checkInRes = await request({
       method: 'PATCH',
       path: '/api/attendance/check-in/',
@@ -359,35 +455,121 @@ describe('Full integration flow', () => {
     const period = new Date().toISOString().slice(0, 7);
     const hoursRes = await request({
       method: 'GET',
-      path: `/api/attendance/hours/${adminUserId}?period=${period}`,
+      path: `/api/attendance/hours/${employeeUserId}?period=${period}`,
       headers: authHeaders(),
     });
     expect(hoursRes.status).toBe(200);
   });
 
-  test('payroll calculate succeeds when attendance exists', async () => {
-    const period = `${new Date().toISOString().slice(0, 7)}-${Date.now()}`;
+  test('attendance invalid id returns domain error status', async () => {
+    const res = await request({
+      method: 'PATCH',
+      path: '/api/attendance/check-in/',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({
+        attendanceId: '00000000-0000-4000-8000-000000000000',
+      }),
+    });
+    expect(res.status).toBe(404);
+  });
+
+  test('payroll recalculates from attendance events for existing period', async () => {
+    const period = new Date().toISOString().slice(0, 7);
 
     const createRes = await request({
       method: 'POST',
       path: '/api/payroll',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
       body: JSON.stringify({
-        employeeId: adminUserId,
+        employeeId: employeeUserId,
         period,
         basePay: 20,
         overtimePay: 30,
       }),
     });
     expect(createRes.status).toBe(201);
+    const createdPayroll = json(createRes.body) || {};
+    const payrollId = createdPayroll?.data?.id;
 
-    const calcRes = await request({
+    const attendanceRes = await request({
       method: 'POST',
-      path: '/api/payroll/calculate',
+      path: '/api/attendance',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ employeeId: adminUserId, period }),
+      body: JSON.stringify({ employeeId: employeeUserId, shiftId }),
     });
-    expect(calcRes.status).toBe(200);
+    expect(attendanceRes.status).toBe(201);
+    const attendancePayload = json(attendanceRes.body) || {};
+    const attendanceId = attendancePayload?.data?.id;
+
+    const checkInRes = await request({
+      method: 'PATCH',
+      path: '/api/attendance/check-in/',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ attendanceId }),
+    });
+    expect(checkInRes.status).toBe(200);
+
+    await sleep(1000);
+
+    const checkOutRes = await request({
+      method: 'PATCH',
+      path: '/api/attendance/check-out/',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ attendanceId }),
+    });
+    expect(checkOutRes.status).toBe(200);
+
+    const updatedPayroll = await retry(
+      async () => {
+        const res = await request({
+          method: 'GET',
+          path: `/api/payroll/${payrollId}`,
+          headers: authHeaders(),
+        });
+        if (res.status !== 200) {
+          throw new Error(`Payroll fetch failed: ${res.status}`);
+        }
+        const payload = json(res.body) || {};
+        if (!(payload?.data?.totalHours > 0)) {
+          throw new Error('Payroll has not been recalculated yet');
+        }
+        return payload.data;
+      },
+      { attempts: 20, delayMs: 1000, label: 'wait for payroll recalculation' },
+    );
+
+    expect(updatedPayroll.status).toBe('COMPLETED');
+  });
+
+  test('inactive user cannot create payroll', async () => {
+    const deactivateRes = await request({
+      method: 'PATCH',
+      path: `/api/users/${employeeAuthUserId}`,
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ isActive: false }),
+    });
+    expect(deactivateRes.status).toBe(200);
+
+    await retry(
+      async () => {
+        const res = await request({
+          method: 'POST',
+          path: '/api/payroll',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({
+            employeeId: employeeUserId,
+            period: `2099-12`,
+            basePay: 20,
+            overtimePay: 30,
+          }),
+        });
+        if (res.status !== 400) {
+          throw new Error(`Payroll create not blocked yet: ${res.status}`);
+        }
+        return true;
+      },
+      { attempts: 10, delayMs: 1000, label: 'wait for employee state sync' },
+    );
   });
 
   test('schedule and shift lists are accessible', async () => {

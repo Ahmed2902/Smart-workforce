@@ -9,9 +9,14 @@ import {
   registerSchema,
 } from '../validators/authValidator';
 
+const loginWindowMs = Number(
+  process.env.AUTH_LOGIN_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000,
+);
+const loginMax = Number(process.env.AUTH_LOGIN_RATE_LIMIT_MAX || 10);
+
 const loginLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10, // 10 login attempts / 15 min
+  windowMs: loginWindowMs,
+  max: loginMax,
   standardHeaders: true,
   legacyHeaders: false,
 });

@@ -13,6 +13,11 @@ import {
   Cache,
 } from '@swma/shared';
 import prisma from '../prismaClient';
+import {
+  publishAttendanceCreated,
+  publishAttendanceStatusChanged,
+  publishAttendanceUpdated,
+} from '../events/producer';
 
 export class attendance {
   async createAttendanceRecord(
@@ -24,13 +29,16 @@ export class attendance {
       throw new AppError('employeeId is required', 400);
     }
 
-    return prisma.attendance.create({
+    const attendance = await prisma.attendance.create({
       data: {
         employeeId,
         shiftId,
         status,
       },
     });
+
+    await publishAttendanceCreated(attendance);
+    return attendance;
   }
 
   async CheckIn(id: string) {
@@ -79,6 +87,18 @@ export class attendance {
         // Invalidate employee hours cache after successful check-in
         await this.invalidateEmployeeHoursCache(attendance.employeeId);
 
+        await publishAttendanceUpdated(result);
+        await publishAttendanceStatusChanged({
+          attendanceId: result.id,
+          employeeId: result.employeeId,
+          shiftId: result.shiftId,
+          status: result.status,
+          clockIn: result.clockIn,
+          clockOut: result.clockOut,
+          createdAt: result.createdAt,
+          updatedAt: result.updatedAt,
+        });
+
         return result;
       }
 
@@ -94,6 +114,18 @@ export class attendance {
 
       // Invalidate employee hours cache after successful check-in
       await this.invalidateEmployeeHoursCache(attendance.employeeId);
+
+      await publishAttendanceUpdated(result);
+      await publishAttendanceStatusChanged({
+        attendanceId: result.id,
+        employeeId: result.employeeId,
+        shiftId: result.shiftId,
+        status: result.status,
+        clockIn: result.clockIn,
+        clockOut: result.clockOut,
+        createdAt: result.createdAt,
+        updatedAt: result.updatedAt,
+      });
 
       return result;
     } finally {
@@ -136,6 +168,18 @@ export class attendance {
 
       // Invalidate employee hours cache after successful check-out
       await this.invalidateEmployeeHoursCache(attendance.employeeId);
+
+      await publishAttendanceUpdated(result);
+      await publishAttendanceStatusChanged({
+        attendanceId: result.id,
+        employeeId: result.employeeId,
+        shiftId: result.shiftId,
+        status: result.status,
+        clockIn: result.clockIn,
+        clockOut: result.clockOut,
+        createdAt: result.createdAt,
+        updatedAt: result.updatedAt,
+      });
 
       return result;
     } finally {

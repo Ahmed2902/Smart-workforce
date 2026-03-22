@@ -1,9 +1,16 @@
+import { Role, SystemRole } from '@prisma/client';
 import prisma from '../prismaClient';
 
 type MembershipEventData = {
-  user?: { id?: string; authUserId?: string; email?: string; name?: string };
+  user?: {
+    id?: string;
+    authUserId?: string;
+    email?: string;
+    name?: string;
+    systemRole?: SystemRole;
+  };
   organization?: { id?: string };
-  role?: string;
+  role?: Role;
 };
 
 type UserEventData = {
@@ -11,8 +18,8 @@ type UserEventData = {
   authUserId?: string;
   email?: string;
   name?: string;
-  systemRole?: string;
-  role?: string;
+  systemRole?: SystemRole;
+  role?: Role;
 };
 
 export async function syncMembershipUpsert(data: MembershipEventData) {
@@ -25,16 +32,20 @@ export async function syncMembershipUpsert(data: MembershipEventData) {
   await prisma.cachedUser.upsert({
     where: { id: userId },
     update: {
+      authUserId: user.authUserId,
       email: user.email,
-      name: user.name,
-      role: role,
+      name: user.name ?? 'New User',
+      role: role ?? 'EMPLOYEE',
+      systemRole: user.systemRole ?? 'USER',
       organizationId: organization.id,
     },
     create: {
       id: userId,
+      authUserId: user.authUserId,
       email: user.email,
-      name: user.name,
-      role: role,
+      name: user.name ?? 'New User',
+      role: role ?? 'EMPLOYEE',
+      systemRole: user.systemRole ?? 'USER',
       organizationId: organization.id,
     },
   });
@@ -49,7 +60,7 @@ export async function syncMembershipRemoval(data: MembershipEventData) {
 
   await prisma.cachedUser.updateMany({
     where: { id: userId },
-    data: { organizationId: 'unassigned', departmentId: null },
+    data: { organizationId: 'unassigned', departmentId: null, role: 'EMPLOYEE' },
   });
 }
 
@@ -57,7 +68,7 @@ export async function syncUserUpsert(data: UserEventData) {
   const id = data.id;
   const name = data.name ?? 'New User';
   const email = data.email;
-  const role = data.systemRole ?? data.role ?? 'EMPLOYEE';
+  const systemRole: SystemRole = data.systemRole ?? 'USER';
 
   if (!id || !email) {
     throw new Error('Missing user id or email for user event');
@@ -65,8 +76,16 @@ export async function syncUserUpsert(data: UserEventData) {
 
   await prisma.cachedUser.upsert({
     where: { id },
-    update: { email, name, role },
-    create: { id, email, name, role, organizationId: 'unassigned' },
+    update: { authUserId: data.authUserId, email, name, systemRole },
+    create: {
+      id,
+      authUserId: data.authUserId,
+      email,
+      name,
+      role: 'EMPLOYEE',
+      systemRole,
+      organizationId: 'unassigned',
+    },
   });
 }
 

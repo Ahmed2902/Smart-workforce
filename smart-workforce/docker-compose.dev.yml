@@ -16,6 +16,8 @@ services:
       - '8080:8080'
     environment:
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
+      AUTH_LIMIT_RATE: ${AUTH_LIMIT_RATE:-1000r/m}
+      API_LIMIT_RATE: ${API_LIMIT_RATE:-1000r/m}
     volumes:
       - ./infra/nginx/nginx.conf:/etc/nginx/templates/default.conf.template:ro
     healthcheck:
@@ -134,6 +136,10 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
+      AUTH_GLOBAL_RATE_LIMIT_MAX: ${AUTH_GLOBAL_RATE_LIMIT_MAX:-10000}
+      AUTH_GLOBAL_RATE_LIMIT_WINDOW_MS: ${AUTH_GLOBAL_RATE_LIMIT_WINDOW_MS:-60000}
+      AUTH_LOGIN_RATE_LIMIT_MAX: ${AUTH_LOGIN_RATE_LIMIT_MAX:-1000}
+      AUTH_LOGIN_RATE_LIMIT_WINDOW_MS: ${AUTH_LOGIN_RATE_LIMIT_WINDOW_MS:-60000}
     command: sh -c "npm run prisma:deploy && npm run start"
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3001/health || exit 1']
@@ -160,6 +166,7 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
+      BOOTSTRAP_SUPERADMIN_EMAIL: ${BOOTSTRAP_SUPERADMIN_EMAIL:-admin@example.com}
     command: sh -c "npm run prisma:deploy && npm run start"
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3002/health || exit 1']

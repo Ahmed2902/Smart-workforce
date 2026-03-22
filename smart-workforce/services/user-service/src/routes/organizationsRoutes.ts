@@ -10,23 +10,23 @@ import {
 const router = Router();
 
 router.use(userMiddleware.protect);
-// Only admins can manage departments
+// Authenticated users can create organizations
 router.post(
   '/',
-  userMiddleware.restrictTo('SUPERADMIN'),
+  userMiddleware.requireSystemRole('SUPERADMIN'),
   validateBody(createOrganizationSchema),
   organizationController.createOrganization,
 );
 router.get('/', organizationController.getOrginzations);
 router.patch(
   '/:id',
-  userMiddleware.restrictTo('SUPERADMIN'),
+  userMiddleware.requireSystemRole('SUPERADMIN'),
   validateBody(updateOrganizationSchema),
   organizationController.updateOrganization,
 );
 router.delete(
   '/:id',
-  userMiddleware.restrictTo('SUPERADMIN'),
+  userMiddleware.requireSystemRole('SUPERADMIN'),
   organizationController.deleteOrganization,
 );
 

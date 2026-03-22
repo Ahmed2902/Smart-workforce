@@ -1,6 +1,7 @@
 import dotenv from 'dotenv';
 import app from './app';
 import { connectRabbit } from './events/rabbit';
+import { consumeExternalEvents } from './events/consumer';
 import prisma from './prismaClient';
 
 dotenv.config();
@@ -33,6 +34,7 @@ async function start() {
   try {
     await retry('database connection', () => prisma.$connect());
     await retry('RabbitMQ connection', () => connectRabbit());
+    await retry('RabbitMQ consumer startup', () => consumeExternalEvents());
 
     const server = app.listen(PORT, () => {
       console.log(`[payroll-service] running on port ${PORT}`);

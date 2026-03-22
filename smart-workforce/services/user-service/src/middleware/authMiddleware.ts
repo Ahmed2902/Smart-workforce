@@ -8,6 +8,26 @@ if (!gatewayToken) {
 }
 const allowDirectAuth = process.env.ALLOW_DIRECT_AUTH === 'true';
 
+const attachRequestUser = (
+  req: Request,
+  user: {
+    id: string;
+    authUserId: string;
+    email: string;
+    systemRole: string;
+  },
+) => {
+  req.user = {
+    id: user.id,
+    userId: user.id,
+    authUserId: user.authUserId,
+    email: user.email,
+    systemRole: user.systemRole,
+    organizationId: null,
+    organizationRole: null,
+  };
+};
+
 export const protect = async (
   req: Request,
   res: Response,
@@ -34,13 +54,7 @@ export const protect = async (
       return res.status(401).json({ message: 'The user no longer exists' });
     }
 
-    req.user = {
-      id: user.id,
-      authUserId: user.authUserId,
-      email: user.email,
-      role: user.systemRole,
-      systemRole: user.systemRole,
-    };
+    attachRequestUser(req, user);
 
     return next();
   }
@@ -65,20 +79,20 @@ export const protect = async (
 
     const user = await prisma.user.findUnique({
       where: { authUserId: subject },
-      select: { id: true, email: true, systemRole: true, isActive: true },
+      select: {
+        id: true,
+        authUserId: true,
+        email: true,
+        systemRole: true,
+        isActive: true,
+      },
     });
 
     if (!user || !user.isActive) {
       return res.status(401).json({ message: 'The user no longer exists' });
     }
 
-    req.user = {
-      id: user.id,
-      authUserId: user.authUserId,
-      email: user.email,
-      role: user.systemRole,
-      systemRole: user.systemRole,
-    };
+    attachRequestUser(req, user);
 
     return next();
   } catch (error) {
@@ -86,10 +100,10 @@ export const protect = async (
   }
 };
 
-export const restrictTo = (...roles: string[]) => {
+export const requireSystemRole = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    const role = req.user?.systemRole || req.user?.role;
-    if (!req.user || !role || !roles.includes(role)) {
+    const systemRole = req.user?.systemRole;
+    if (!req.user || !systemRole || !roles.includes(systemRole)) {
       return res
         .status(403)
         .json({ message: 'Forbidden: insufficient permissions' });
@@ -97,3 +111,5 @@ export const restrictTo = (...roles: string[]) => {
     next();
   };
 };
+
+export const restrictTo = requireSystemRole;
