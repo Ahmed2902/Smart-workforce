@@ -1,8 +1,8 @@
 import { AttendanceStatus } from '@prisma/client';
 import AppError from '../utils/appError';
 import {
+  isLateForShiftForUser,
   validateShiftForEmployee,
-  isLateForShift,
 } from '../utils/scheduleService';
 import {
   acquireLock,
@@ -14,13 +14,30 @@ import {
 } from '@swma/shared';
 import prisma from '../prismaClient';
 import {
+  assertOrgWriteAccess,
+  AuthenticatedUser,
+  isSuperadmin,
+} from '../utils/accessControl';
+import {
   publishAttendanceCreated,
   publishAttendanceStatusChanged,
   publishAttendanceUpdated,
 } from '../events/producer';
 
 export class attendance {
+  private async getCachedEmployee(employeeId: string) {
+    return prisma.cachedUser.findUnique({
+      where: { id: employeeId },
+      select: {
+        id: true,
+        organizationId: true,
+        isActive: true,
+      },
+    });
+  }
+
   async createAttendanceRecord(
+    actor: AuthenticatedUser,
     employeeId: string,
     shiftId?: string,
     status: AttendanceStatus = AttendanceStatus.SCHEDULED,
@@ -28,6 +45,17 @@ export class attendance {
     if (!employeeId) {
       throw new AppError('employeeId is required', 400);
     }
+
+    const employee = await this.getCachedEmployee(employeeId);
+    if (!employee || !employee.isActive) {
+      throw new AppError('Employee not found in cache', 404);
+    }
+
+    assertOrgWriteAccess(
+      actor,
+      employee.organizationId,
+      'You can only manage attendance for your organization',
+    );
 
     const attendance = await prisma.attendance.create({
       data: {
@@ -41,7 +69,7 @@ export class attendance {
     return attendance;
   }
 
-  async CheckIn(id: string) {
+  async CheckIn(actor: AuthenticatedUser, id: string) {
     const lockKey = `lock:checkin:${id}`;
     const lockAcquired = await acquireLock(lockKey, 30); // 30 second lock
 
@@ -55,6 +83,12 @@ export class attendance {
       });
 
       if (!attendance) throw new AppError('Attendance record not found', 404);
+      if (!isSuperadmin(actor) && attendance.employeeId !== actor.id) {
+        throw new AppError(
+          'You can only check in to your own attendance records',
+          403,
+        );
+      }
       if (attendance.clockIn) throw new AppError('Already checked in', 400);
 
       const now = new Date();
@@ -64,13 +98,14 @@ export class attendance {
         const isValidShift = await validateShiftForEmployee(
           attendance.shiftId,
           attendance.employeeId,
+          actor,
         );
 
         if (!isValidShift) {
           throw new AppError('Invalid shift for this employee', 400);
         }
 
-        const isLate = await isLateForShift(attendance.shiftId);
+        const isLate = await isLateForShiftForUser(attendance.shiftId, actor);
         const status = isLate
           ? AttendanceStatus.LATE
           : AttendanceStatus.PRESENT;
@@ -138,7 +173,7 @@ export class attendance {
    * Employee checks out
    * Uses distributed lock to prevent race conditions
    */
-  async CheckOut(id: string) {
+  async CheckOut(actor: AuthenticatedUser, id: string) {
     const lockKey = `lock:checkout:${id}`;
     const lockAcquired = await acquireLock(lockKey, 30); // 30 second lock
 
@@ -152,6 +187,12 @@ export class attendance {
       });
 
       if (!attendance) throw new AppError('Attendance record not found', 404);
+      if (!isSuperadmin(actor) && attendance.employeeId !== actor.id) {
+        throw new AppError(
+          'You can only check out of your own attendance records',
+          403,
+        );
+      }
       if (!attendance.clockIn)
         throw new AppError('Cannot check out before checking in', 400);
       if (attendance.clockOut) throw new AppError('Already checked out', 400);

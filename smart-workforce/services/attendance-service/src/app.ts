@@ -3,6 +3,8 @@ import cors from 'cors';
 import morgan from 'morgan';
 import attendanceRoutes from './routes/attendanceRoutes';
 import dotenv from 'dotenv';
+import { getEmployeeHours } from './controllers/attendanceController';
+import { requireInternalService } from './utils/authMiddleware';
 
 dotenv.config();
 
@@ -15,6 +17,12 @@ app.use(morgan('dev'));
 app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok', service: 'attendance-service' });
 });
+
+app.get(
+  '/internal/attendance/hours/:employeeId',
+  requireInternalService('payroll-service'),
+  getEmployeeHours,
+);
 
 app.use('/api/attendance', attendanceRoutes);
 

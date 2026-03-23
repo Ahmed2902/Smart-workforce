@@ -9,15 +9,28 @@ if (!GATEWAY_TOKEN) {
   throw new Error('GATEWAY_TOKEN environment variable is required');
 }
 
-const buildInternalHeaders = () => ({
-  'X-Gateway-Token': GATEWAY_TOKEN,
-  'X-User-Id': 'internal-service',
-  'X-User-Email': 'internal@service.local',
-  'X-User-Role': 'ADMIN',
-  'X-Auth-Sub': 'internal-service',
-});
+type ForwardedUser = {
+  authUserId?: string;
+  email: string;
+};
 
-export async function getShiftDetails(shiftId: string): Promise<ShiftDetails> {
+const buildForwardedHeaders = (user: ForwardedUser) => {
+  if (!user.authUserId) {
+    throw new AppError('Authenticated user is missing authUserId', 500);
+  }
+
+  return {
+    'X-Gateway-Token': GATEWAY_TOKEN,
+    'X-User-Id': user.authUserId,
+    'X-User-Email': user.email,
+    'X-Auth-Sub': user.authUserId,
+  };
+};
+
+export async function getShiftDetails(
+  shiftId: string,
+  user: ForwardedUser,
+): Promise<ShiftDetails> {
   try {
     // Try to get from cache first (1 hour TTL)
     const cacheKey = `shift:${shiftId}`;
@@ -35,7 +48,7 @@ export async function getShiftDetails(shiftId: string): Promise<ShiftDetails> {
       `${SCHEDULE_SERVICE_URL}/api/schedules/shifts/${shiftId}`,
       {
         headers: {
-          ...buildInternalHeaders(),
+          ...buildForwardedHeaders(user),
         },
       },
     );
@@ -61,21 +74,22 @@ export async function getShiftDetails(shiftId: string): Promise<ShiftDetails> {
 export async function validateShiftForEmployee(
   shiftId: string,
   employeeId: string,
+  user: ForwardedUser,
 ): Promise<boolean> {
   try {
-    const shift = await getShiftDetails(shiftId);
-    console.log('the shift.employee id', shift.employeeId);
-    console.log('the employee id', employeeId);
-
-    return true; //shift.employeeId === employeeId; //&& new Date(shift.startDate) <= new Date();
+    const shift = await getShiftDetails(shiftId, user);
+    return shift.employeeId === employeeId;
   } catch (error) {
     return false;
   }
 }
 
-export async function isLateForShift(shiftId: string): Promise<boolean> {
+export async function isLateForShiftForUser(
+  shiftId: string,
+  user: ForwardedUser,
+): Promise<boolean> {
   try {
-    const shift = await getShiftDetails(shiftId);
+    const shift = await getShiftDetails(shiftId, user);
     const now = new Date();
     const shiftStart = new Date(shift.startDate);
     // Consider 15 minutes grace period

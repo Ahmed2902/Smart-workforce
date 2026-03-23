@@ -68,7 +68,7 @@ app.get('/internal/auth/verify', async (req: Request, res: Response) => {
 
     const user = await prisma.authUser.findUnique({
       where: { id: subject },
-      select: { id: true, email: true, role: true, isActive: true },
+      select: { id: true, email: true, isActive: true },
     });
 
     if (!user || !user.isActive) {
@@ -77,7 +77,6 @@ app.get('/internal/auth/verify', async (req: Request, res: Response) => {
 
     res.setHeader('X-User-Id', user.id);
     res.setHeader('X-User-Email', user.email);
-    res.setHeader('X-User-Role', user.role);
     res.setHeader('X-Auth-Sub', subject);
     return res.status(204).send();
   } catch (error) {

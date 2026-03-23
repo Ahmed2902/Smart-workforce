@@ -1,8 +1,10 @@
 import { getChannel, connectRabbit } from './rabbit';
 import {
   handleAttendanceEvent,
-  markEmployeeDeleted,
-  syncEmployeeState,
+  syncMembershipRemoval,
+  syncMembershipUpsert,
+  syncUserDelete,
+  syncUserUpsert,
 } from '../services/payrollEventService';
 
 const USER_EXCHANGE = 'user';
@@ -41,8 +43,8 @@ export const consumeExternalEvents = async () => {
 
   await channel.assertExchange(USER_EXCHANGE, 'topic', { durable: true });
   await channel.assertQueue(USER_QUEUE, { durable: true });
-  await channel.bindQueue(USER_QUEUE, USER_EXCHANGE, 'user.updated');
-  await channel.bindQueue(USER_QUEUE, USER_EXCHANGE, 'user.deleted');
+  await channel.bindQueue(USER_QUEUE, USER_EXCHANGE, 'user.*');
+  await channel.bindQueue(USER_QUEUE, USER_EXCHANGE, 'user.membership.*');
 
   channel.consume(USER_QUEUE, async (msg: any) => {
     if (!msg) return;
@@ -51,12 +53,17 @@ export const consumeExternalEvents = async () => {
       const event = JSON.parse(msg.content.toString());
       const data = event.data || {};
 
-      if (event.type === 'UserUpdated' && data.isActive !== undefined) {
-        await syncEmployeeState(data);
-      }
-
-      if (event.type === 'UserDeleted') {
-        await markEmployeeDeleted(data);
+      if (
+        event.type === 'UserMembershipAdded' ||
+        event.type === 'UserMembershipUpdated'
+      ) {
+        await syncMembershipUpsert(data);
+      } else if (event.type === 'UserMembershipRemoved') {
+        await syncMembershipRemoval(data);
+      } else if (event.type === 'UserRegistered' || event.type === 'UserUpdated') {
+        await syncUserUpsert(data);
+      } else if (event.type === 'UserDeleted') {
+        await syncUserDelete(data);
       }
 
       safeAck(channel, msg);

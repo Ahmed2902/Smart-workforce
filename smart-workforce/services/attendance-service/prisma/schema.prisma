@@ -34,6 +34,20 @@ enum LeaveStatus {
   REJECTED
   @@schema("attendance")
 }
+
+enum Role {
+  ADMIN
+  MANAGER
+  SUPERVISOR
+  EMPLOYEE
+  @@schema("attendance")
+}
+
+enum SystemRole {
+  SUPERADMIN
+  USER
+  @@schema("attendance")
+}
 //// =======MODELS===========
 
 model Attendance {
@@ -65,5 +79,20 @@ model LeaveRequest {
 
   @@index([employeeId])
 
+  @@schema("attendance")
+}
+
+model CachedUser {
+  id               String      @id
+  authUserId       String?     @unique
+  email            String      @unique
+  systemRole       SystemRole  @default(USER)
+  organizationId   String?
+  organizationRole Role?
+  isActive         Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([organizationId])
   @@schema("attendance")
 }

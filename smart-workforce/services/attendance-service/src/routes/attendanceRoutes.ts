@@ -21,7 +21,7 @@ router.use(protect);
 // Create attendance record (admin/manager/superadmin)
 router.post(
   '/',
-  restrictTo('ADMIN', 'MANAGER', 'SUPERADMIN'),
+  restrictTo('ADMIN', 'MANAGER'),
   validateBody(createAttendanceSchema),
   createAttendanceRecord,
 );

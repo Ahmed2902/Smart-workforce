@@ -1,18 +1,27 @@
 import { Response, Request } from 'express';
 
 import * as service from '../services/payrollService';
+import {
+  AuthenticatedUser,
+  requireActor,
+} from '../utils/accessControl';
 
 export const calculatePayroll = async (req: Request, res: Response) => {
   try {
     const { employeeId, period } = req.body;
-    const payroll = await service.calculatePayroll(employeeId, period);
+    const actor = requireActor(req.user as AuthenticatedUser | undefined);
+    const payroll = await service.calculatePayroll(employeeId, period, {
+      actor,
+    });
     res.status(200).json({
       status: 'success',
       data: payroll,
     });
   } catch (err: any) {
     const message = err?.message || 'Failed to calculate payroll';
-    const status = message.includes('Failed to fetch employee hours') ? 502 : 400;
+    const status =
+      err?.statusCode ||
+      (message.includes('Failed to fetch employee hours') ? 502 : 400);
     res.status(status).json({ status: 'error', message });
   }
 };
@@ -20,7 +29,9 @@ export const calculatePayroll = async (req: Request, res: Response) => {
 export const createPayroll = async (req: Request, res: Response) => {
   try {
     const { employeeId, period, basePay, overtimePay } = req.body;
+    const actor = requireActor(req.user as AuthenticatedUser | undefined);
     const payroll = await service.createPayroll(
+      actor,
       employeeId,
       period,
       basePay,
@@ -29,7 +40,7 @@ export const createPayroll = async (req: Request, res: Response) => {
     res.status(201).json({ status: 'success', data: payroll });
   } catch (err: any) {
     const message = err?.message || 'Failed to create payroll';
-    res.status(400).json({ status: 'error', message });
+    res.status(err?.statusCode || 400).json({ status: 'error', message });
   }
 };
 
@@ -57,20 +68,22 @@ export const getPayrollById = async (req: Request, res: Response) => {
 
 export const updatePayroll = async (req: Request, res: Response) => {
   try {
-    const payroll = await service.updatePayroll(req.params.id, req.body);
+    const actor = requireActor(req.user as AuthenticatedUser | undefined);
+    const payroll = await service.updatePayroll(actor, req.params.id, req.body);
     res.status(200).json({ status: 'success', data: payroll });
   } catch (err: any) {
     const message = err?.message || 'Failed to update payroll';
-    res.status(400).json({ status: 'error', message });
+    res.status(err?.statusCode || 400).json({ status: 'error', message });
   }
 };
 
 export const deletePayroll = async (req: Request, res: Response) => {
   try {
-    await service.deletePayroll(req.params.id);
+    const actor = requireActor(req.user as AuthenticatedUser | undefined);
+    await service.deletePayroll(actor, req.params.id);
     res.status(204).send();
   } catch (err: any) {
     const message = err?.message || 'Failed to delete payroll';
-    res.status(400).json({ status: 'error', message });
+    res.status(err?.statusCode || 400).json({ status: 'error', message });
   }
 };

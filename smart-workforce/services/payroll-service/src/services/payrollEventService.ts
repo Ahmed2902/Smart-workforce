@@ -1,9 +1,29 @@
+import { Role, SystemRole } from '@prisma/client';
 import prisma from '../prismaClient';
 import { calculatePayroll } from './payrollService';
 
 type UserEventData = {
   id?: string;
+  authUserId?: string | null;
+  email?: string;
+  systemRole?: SystemRole;
   isActive?: boolean;
+  organizationId?: string | null;
+  organizationRole?: Role | null;
+};
+
+type MembershipEventData = {
+  user?: {
+    id?: string;
+    authUserId?: string | null;
+    email?: string;
+    systemRole?: SystemRole;
+    isActive?: boolean;
+    organizationId?: string | null;
+    organizationRole?: Role | null;
+  };
+  organization?: { id?: string };
+  role?: Role;
 };
 
 type AttendanceEventData = {
@@ -28,41 +48,86 @@ export const derivePayrollPeriod = (data: AttendanceEventData) => {
   throw new Error('Attendance event does not include a usable timestamp');
 };
 
-export async function syncEmployeeState(data: UserEventData) {
-  if (!data.id || data.isActive === undefined) {
-    throw new Error('User event missing employee id or isActive');
+export async function syncMembershipUpsert(data: MembershipEventData) {
+  const userId = data.user?.id;
+  const email = data.user?.email;
+  const organizationId = data.user?.organizationId ?? data.organization?.id;
+  const organizationRole =
+    data.user?.organizationRole ?? data.role ?? 'EMPLOYEE';
+
+  if (!userId || !email || !organizationId) {
+    throw new Error('Missing user/org fields in membership event');
   }
 
-  await prisma.employeeState.upsert({
-    where: { employeeId: data.id },
+  await prisma.cachedUser.upsert({
+    where: { id: userId },
     update: {
-      isActive: data.isActive,
-      deletedAt: data.isActive ? null : new Date(),
+      authUserId: data.user?.authUserId ?? null,
+      email,
+      systemRole: data.user?.systemRole ?? 'USER',
+      organizationId,
+      organizationRole,
+      isActive: data.user?.isActive ?? true,
     },
     create: {
-      employeeId: data.id,
-      isActive: data.isActive,
-      deletedAt: data.isActive ? null : new Date(),
+      id: userId,
+      authUserId: data.user?.authUserId ?? null,
+      email,
+      systemRole: data.user?.systemRole ?? 'USER',
+      organizationId,
+      organizationRole,
+      isActive: data.user?.isActive ?? true,
     },
   });
 }
 
-export async function markEmployeeDeleted(data: UserEventData) {
+export async function syncMembershipRemoval(data: MembershipEventData) {
+  const userId = data.user?.id;
+  if (!userId) {
+    throw new Error('Missing user id in membership removal');
+  }
+
+  await prisma.cachedUser.updateMany({
+    where: { id: userId },
+    data: {
+      organizationId: null,
+      organizationRole: null,
+    },
+  });
+}
+
+export async function syncUserUpsert(data: UserEventData) {
+  if (!data.id || !data.email) {
+    throw new Error('User event missing employee id or email');
+  }
+
+  await prisma.cachedUser.upsert({
+    where: { id: data.id },
+    update: {
+      authUserId: data.authUserId ?? null,
+      email: data.email,
+      systemRole: data.systemRole ?? 'USER',
+      isActive: data.isActive ?? true,
+    },
+    create: {
+      id: data.id,
+      authUserId: data.authUserId ?? null,
+      email: data.email,
+      systemRole: data.systemRole ?? 'USER',
+      organizationId: data.organizationId ?? null,
+      organizationRole: data.organizationRole ?? null,
+      isActive: data.isActive ?? true,
+    },
+  });
+}
+
+export async function syncUserDelete(data: UserEventData) {
   if (!data.id) {
     throw new Error('User delete event missing employee id');
   }
 
-  await prisma.employeeState.upsert({
-    where: { employeeId: data.id },
-    update: {
-      isActive: false,
-      deletedAt: new Date(),
-    },
-    create: {
-      employeeId: data.id,
-      isActive: false,
-      deletedAt: new Date(),
-    },
+  await prisma.cachedUser.deleteMany({
+    where: { id: data.id },
   });
 }
 

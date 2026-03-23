@@ -1,6 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { attendanceService } from '../services/attendanceService';
-import AppError from '../utils/appError';
+import {
+  AuthenticatedUser,
+  requireActor,
+} from '../utils/accessControl';
 
 export const checkIn = async (
   req: Request,
@@ -9,7 +12,8 @@ export const checkIn = async (
 ) => {
   try {
     const { attendanceId } = req.body;
-    const attendance = await attendanceService.CheckIn(attendanceId);
+    const actor = requireActor(req.user as AuthenticatedUser | undefined);
+    const attendance = await attendanceService.CheckIn(actor, attendanceId);
     res.status(200).json({
       status: 'success',
       message: 'employee checked in succesffuly',
@@ -27,7 +31,9 @@ export const createAttendanceRecord = async (
 ) => {
   try {
     const { employeeId, shiftId, status } = req.body;
+    const actor = requireActor(req.user as AuthenticatedUser | undefined);
     const attendance = await attendanceService.createAttendanceRecord(
+      actor,
       employeeId,
       shiftId,
       status,
@@ -48,7 +54,8 @@ export const checkOut = async (
 ) => {
   try {
     const { attendanceId } = req.body;
-    const attendance = await attendanceService.CheckOut(attendanceId);
+    const actor = requireActor(req.user as AuthenticatedUser | undefined);
+    const attendance = await attendanceService.CheckOut(actor, attendanceId);
     res.status(200).json({
       status: 'success',
       message: 'Employee checked out successfully',

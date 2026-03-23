@@ -1,7 +1,8 @@
 import axios, { AxiosError } from 'axios';
 
 const ATTENDANCE_SERVICE_URL =
-  process.env.ATTENDANCE_SERVICE_URL || 'http://localhost:3004/api/attendance';
+  process.env.ATTENDANCE_SERVICE_INTERNAL_URL ||
+  'http://localhost:3004/internal/attendance';
 const GATEWAY_TOKEN = process.env.GATEWAY_TOKEN;
 if (!GATEWAY_TOKEN) {
   throw new Error('GATEWAY_TOKEN environment variable is required');
@@ -9,10 +10,7 @@ if (!GATEWAY_TOKEN) {
 
 const buildInternalHeaders = () => ({
   'X-Gateway-Token': GATEWAY_TOKEN,
-  'X-User-Id': 'internal-service',
-  'X-User-Email': 'internal@service.local',
-  'X-User-Role': 'ADMIN',
-  'X-Auth-Sub': 'internal-service',
+  'X-Internal-Service': 'payroll-service',
 });
 
 interface EmployeeHours {

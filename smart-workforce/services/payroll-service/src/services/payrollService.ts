@@ -1,42 +1,68 @@
 import prisma from '../prismaClient';
 import * as client from './attendanceClient';
+import AppError from '../utils/AppError';
 import {
   publishPayrollApproved,
   publishPayrollCalculated,
   publishPayrollCreated,
   publishPayrollDeleted,
 } from '../events/producer';
+import {
+  assertOrgWriteAccess,
+  AuthenticatedUser,
+} from '../utils/accessControl';
 
 type MutationOptions = {
   skipEmployeeStateCheck?: boolean;
   publishEvent?: boolean;
+  actor?: AuthenticatedUser;
 };
+
+const getCachedEmployee = async (employeeId: string) =>
+  prisma.cachedUser.findUnique({
+    where: { id: employeeId },
+    select: {
+      id: true,
+      organizationId: true,
+      isActive: true,
+    },
+  });
 
 const ensureEmployeeActive = async (
   employeeId: string,
   options?: MutationOptions,
 ) => {
+  const cachedUser = await getCachedEmployee(employeeId);
+  if (!cachedUser) {
+    throw new AppError('Employee not found in cache', 404);
+  }
+
+  if (options?.actor) {
+    assertOrgWriteAccess(
+      options.actor,
+      cachedUser.organizationId,
+      'You can only manage payroll for your organization',
+    );
+  }
+
   if (options?.skipEmployeeStateCheck) {
     return;
   }
 
-  const state = await prisma.employeeState.findUnique({
-    where: { employeeId },
-  });
-
-  if (state && !state.isActive) {
+  if (!cachedUser.isActive) {
     throw new Error('Employee is inactive or deleted');
   }
 };
 
 export const createPayroll = async (
+  actor: AuthenticatedUser,
   employeeId: string,
   period: string,
   basePay: number,
   overtimePay: number,
   options?: MutationOptions,
 ) => {
-  await ensureEmployeeActive(employeeId, options);
+  await ensureEmployeeActive(employeeId, { ...options, actor });
   const existing = await prisma.payroll.findFirst({
     where: { employeeId, period },
   });
@@ -125,11 +151,20 @@ export const getPayrollById = async (id: string) => {
   return prisma.payroll.findUnique({ where: { id } });
 };
 
-export const updatePayroll = async (id: string, data: any) => {
+export const updatePayroll = async (
+  actor: AuthenticatedUser,
+  id: string,
+  data: any,
+) => {
   const previous = await prisma.payroll.findUnique({ where: { id } });
   if (!previous) {
     throw new Error('Payroll not found');
   }
+
+  await ensureEmployeeActive(previous.employeeId, {
+    actor,
+    skipEmployeeStateCheck: true,
+  });
 
   const payroll = await prisma.payroll.update({ where: { id }, data });
 
@@ -140,7 +175,17 @@ export const updatePayroll = async (id: string, data: any) => {
   return payroll;
 };
 
-export const deletePayroll = async (id: string) => {
+export const deletePayroll = async (actor: AuthenticatedUser, id: string) => {
+  const existing = await prisma.payroll.findUnique({ where: { id } });
+  if (!existing) {
+    throw new Error('Payroll not found');
+  }
+
+  await ensureEmployeeActive(existing.employeeId, {
+    actor,
+    skipEmployeeStateCheck: true,
+  });
+
   const payroll = await prisma.payroll.delete({ where: { id } });
   await publishPayrollDeleted({
     id: payroll.id,

@@ -86,5 +86,7 @@ export async function handleUserRegistered(data: UserRegisteredEvent) {
     { skipAuth: true },
   );
 
+  await producer.publishUserCreated(user);
+
   return { user, defaultOrg };
 }

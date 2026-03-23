@@ -1,6 +1,7 @@
 import AppError from '../utils/AppError';
 import jwt from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
+import prisma from '../prismaClient';
 
 const gatewayToken = process.env.GATEWAY_TOKEN;
 if (!gatewayToken) {
@@ -13,8 +14,44 @@ type JwtClaims = {
   id?: string;
   userId?: string;
   email?: string;
-  role?: string;
 };
+
+const attachRequestUser = (
+  req: Request,
+  cachedUser: {
+    id: string;
+    authUserId: string | null;
+    email: string;
+    systemRole: string;
+    organizationId: string | null;
+    organizationRole: string | null;
+  },
+  email?: string,
+) => {
+  req.user = {
+    id: cachedUser.id,
+    userId: cachedUser.id,
+    authUserId: cachedUser.authUserId ?? undefined,
+    email: email || cachedUser.email,
+    systemRole: cachedUser.systemRole || 'USER',
+    organizationId: cachedUser.organizationId,
+    organizationRole: cachedUser.organizationRole,
+  };
+};
+
+const findCachedUser = async (authUserId: string) =>
+  prisma.cachedUser.findUnique({
+    where: { authUserId },
+    select: {
+      id: true,
+      authUserId: true,
+      email: true,
+      systemRole: true,
+      organizationId: true,
+      organizationRole: true,
+      isActive: true,
+    },
+  });
 
 export const protect = async (
   req: Request,
@@ -22,15 +59,19 @@ export const protect = async (
   next: NextFunction,
 ) => {
   if (req.header('x-gateway-token') === gatewayToken) {
-    const id = req.header('x-user-id');
+    const authUserId = req.header('x-user-id');
     const email = req.header('x-user-email') || '';
-    const role = req.header('x-user-role') || '';
 
-    if (!id || !role) {
+    if (!authUserId) {
       return next(new AppError('Missing forwarded auth headers', 401));
     }
 
-    req.user = { id, email, role };
+    const cachedUser = await findCachedUser(authUserId);
+    if (!cachedUser || !cachedUser.isActive) {
+      return next(new AppError('User not found in cache', 401));
+    }
+
+    attachRequestUser(req, cachedUser, email);
     return next();
   }
 
@@ -60,11 +101,12 @@ export const protect = async (
       return next(new AppError('Invalid token payload', 401));
     }
 
-    req.user = {
-      id: subject,
-      email: payload.email || '',
-      role: payload.role || 'USER',
-    };
+    const cachedUser = await findCachedUser(subject);
+    if (!cachedUser || !cachedUser.isActive) {
+      return next(new AppError('User not found in cache', 401));
+    }
+
+    attachRequestUser(req, cachedUser, payload.email);
 
     return next();
   } catch (error) {
@@ -74,7 +116,18 @@ export const protect = async (
 
 export const restrictTo = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user || !roles.includes(req.user.role || '')) {
+    if (!req.user) {
+      return next(new AppError('Forbidden: user context not found', 403));
+    }
+
+    if (req.user.systemRole === 'SUPERADMIN') {
+      return next();
+    }
+
+    if (
+      !req.user.organizationRole ||
+      !roles.includes(req.user.organizationRole)
+    ) {
       return next(new AppError('Forbidden: insufficient permissions', 403));
     }
     next();
