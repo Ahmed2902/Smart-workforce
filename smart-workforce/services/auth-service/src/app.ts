@@ -14,15 +14,23 @@ import cookieParser from 'cookie-parser';
 import prisma from './prismaClient';
 import * as jwtUtil from './utils/jwt';
 
+const authGlobalWindowMs = Number(
+  process.env.AUTH_GLOBAL_RATE_LIMIT_WINDOW_MS || 15 * 60 * 1000,
+);
+const authGlobalMax = Number(process.env.AUTH_GLOBAL_RATE_LIMIT_MAX || 100);
+
 const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 min
-  max: 100, // 100 reqs per IP per window
+  windowMs: authGlobalWindowMs,
+  max: authGlobalMax,
   standardHeaders: true,
   legacyHeaders: false,
 });
 
 const isProd = process.env.NODE_ENV === 'production';
-const gatewayToken = process.env.GATEWAY_TOKEN || 'gateway-internal-token';
+const gatewayToken = process.env.GATEWAY_TOKEN;
+if (!gatewayToken) {
+  throw new Error('GATEWAY_TOKEN environment variable is required');
+}
 
 const app = express();
 
@@ -60,7 +68,7 @@ app.get('/internal/auth/verify', async (req: Request, res: Response) => {
 
     const user = await prisma.authUser.findUnique({
       where: { id: subject },
-      select: { id: true, email: true, role: true, isActive: true },
+      select: { id: true, email: true, isActive: true },
     });
 
     if (!user || !user.isActive) {
@@ -69,7 +77,6 @@ app.get('/internal/auth/verify', async (req: Request, res: Response) => {
 
     res.setHeader('X-User-Id', user.id);
     res.setHeader('X-User-Email', user.email);
-    res.setHeader('X-User-Role', user.role);
     res.setHeader('X-Auth-Sub', subject);
     return res.status(204).send();
   } catch (error) {

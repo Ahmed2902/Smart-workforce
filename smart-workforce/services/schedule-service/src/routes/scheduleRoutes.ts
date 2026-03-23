@@ -83,7 +83,7 @@ router.post(
   '/schedules/shifts',
   authMiddleware.protect,
   authMiddleware.restrictTo('ADMIN', 'MANAGER'),
-  //validateBody(createShiftSchema),
+  validateBody(createShiftSchema),
   shiftController.createShift,
 );
 

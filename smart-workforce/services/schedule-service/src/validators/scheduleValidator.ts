@@ -10,7 +10,7 @@ export const createScheduleSchema = z.object({
   endDate: z
     .string()
     .refine((s) => !Number.isNaN(Date.parse(s)), { message: 'Invalid date' }),
-  createdById: z.string().uuid(),
+  createdById: z.string().uuid().optional(),
   organizationId: z.string().uuid(),
   departmentId: z.string().uuid().optional(),
 });

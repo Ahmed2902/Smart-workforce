@@ -32,3 +32,32 @@ enum status {
   APPROVED
   @@schema("payroll")
 }
+
+enum Role {
+  ADMIN
+  MANAGER
+  SUPERVISOR
+  EMPLOYEE
+  @@schema("payroll")
+}
+
+enum SystemRole {
+  SUPERADMIN
+  USER
+  @@schema("payroll")
+}
+
+model CachedUser {
+  id               String      @id
+  authUserId       String?     @unique
+  email            String      @unique
+  systemRole       SystemRole  @default(USER)
+  organizationId   String?
+  organizationRole Role?
+  isActive         Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([organizationId])
+  @@schema("payroll")
+}

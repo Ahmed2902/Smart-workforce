@@ -9,7 +9,12 @@ import {
 
 const router = Router();
 
-router.patch('/me', validateBody(updateUserSchema), userController.updateMe);
+router.patch(
+  '/me',
+  userMiddleware.protect,
+  validateBody(updateUserSchema),
+  userController.updateMe,
+);
 // protect all routes below
 router.use(userMiddleware.protect);
 
@@ -17,18 +22,18 @@ router.use(userMiddleware.protect);
 router.get('/me', userController.getUsers);
 router.get(
   '/:id',
-  userMiddleware.restrictTo('SYSTEMADMIN'),
+  userMiddleware.restrictTo('SUPERADMIN'),
   userController.getUserById,
 );
 router.patch(
   '/:id',
-  userMiddleware.restrictTo('SYSTEMADMIN'),
+  userMiddleware.restrictTo('SUPERADMIN'),
   validateBody(updateUserSchema),
   userController.updateUser,
 );
 router.delete(
   '/:id',
-  userMiddleware.restrictTo('SYSTEMADMIN'),
+  userMiddleware.restrictTo('SUPERADMIN'),
   userController.DeleteUser,
 );
 

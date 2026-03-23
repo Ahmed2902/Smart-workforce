@@ -2,11 +2,14 @@ import { Router } from 'express';
 import {
   checkIn,
   checkOut,
+  createAttendanceRecord,
   getEmployeeAttendance,
   getEmployeeHours,
 } from '../controllers/attendanceController';
 
-import { protect } from '../utils/authMiddleware';
+import { protect, restrictTo } from '../utils/authMiddleware';
+import { validateBody } from '../middlewares/validateRequest';
+import { createAttendanceSchema } from '../validators/attendanceValidator';
 
 const router = Router();
 
@@ -14,6 +17,14 @@ const router = Router();
 router.use(protect);
 
 // ====== Attendance Routes ====== //
+
+// Create attendance record (admin/manager/superadmin)
+router.post(
+  '/',
+  restrictTo('ADMIN', 'MANAGER'),
+  validateBody(createAttendanceSchema),
+  createAttendanceRecord,
+);
 
 // ✅ Employee manually checks in
 router.patch('/check-in/', checkIn);

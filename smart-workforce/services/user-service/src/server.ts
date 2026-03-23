@@ -1,11 +1,10 @@
 import app from './app';
 import { connectRabbit } from './events/rabbit';
 import { consumeUserEvents } from './events/userConsumer';
-import { PrismaClient } from '@prisma/client';
 import config from './utils/config';
 import { initRedis, closeRedis } from '@swma/shared';
+import prisma from './prismaClient';
 
-const prisma = new PrismaClient();
 const PORT = config.PORT || 3002;
 
 async function retry<T>(

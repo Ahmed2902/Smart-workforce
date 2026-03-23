@@ -14,8 +14,12 @@ services:
         condition: service_healthy
     ports:
       - '8080:8080'
+    environment:
+      GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
+      AUTH_LIMIT_RATE: ${AUTH_LIMIT_RATE:-120r/m}
+      API_LIMIT_RATE: ${API_LIMIT_RATE:-240r/m}
     volumes:
-      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/nginx.conf:/etc/nginx/templates/default.conf.template:ro
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:8080/health || exit 1']
       interval: 10s
@@ -131,9 +135,13 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internaltoken}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
-      ALLOW_DIRECT_AUTH: ${ALLOW_DIRECT_AUTH:-false}
+      AUTH_GLOBAL_RATE_LIMIT_MAX: ${AUTH_GLOBAL_RATE_LIMIT_MAX:-1000}
+      AUTH_GLOBAL_RATE_LIMIT_WINDOW_MS: ${AUTH_GLOBAL_RATE_LIMIT_WINDOW_MS:-60000}
+      AUTH_LOGIN_RATE_LIMIT_MAX: ${AUTH_LOGIN_RATE_LIMIT_MAX:-200}
+      AUTH_LOGIN_RATE_LIMIT_WINDOW_MS: ${AUTH_LOGIN_RATE_LIMIT_WINDOW_MS:-60000}
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-admin@example.com}
+      ALLOW_BOOTSTRAP_ADMIN: ${ALLOW_BOOTSTRAP_ADMIN:-true}
     command: sh -c "npm run prisma:deploy && npm run start"
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3001/health || exit 1']
@@ -159,9 +167,9 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internaltoken}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
-      ALLOW_DIRECT_AUTH: ${ALLOW_DIRECT_AUTH:-false}
+      BOOTSTRAP_SUPERADMIN_EMAIL: ${BOOTSTRAP_SUPERADMIN_EMAIL:-admin@example.com}
+      ALLOW_BOOTSTRAP_SUPERADMIN: ${ALLOW_BOOTSTRAP_SUPERADMIN:-true}
     command: sh -c "npm run prisma:deploy && npm run start"
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3002/health || exit 1']
@@ -185,9 +193,7 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET:-change-me}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internaltoken}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
-      ALLOW_DIRECT_AUTH: ${ALLOW_DIRECT_AUTH:-false}
     command: sh -c "npm run prisma:deploy && npm run start"
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3003/health || exit 1']
@@ -216,9 +222,7 @@ services:
       REDIS_URL: redis://redis:6379
       SCHEDULE_SERVICE_URL: http://schedule-service:3003
       JWT_SECRET: ${JWT_SECRET:-change-me}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internaltoken}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
-      ALLOW_DIRECT_AUTH: ${ALLOW_DIRECT_AUTH:-false}
     command: sh -c "npm run prisma:deploy && npm run start"
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3004/health || exit 1']
@@ -244,9 +248,7 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       ATTENDANCE_SERVICE_URL: http://attendance-service:3004/api/attendance
       JWT_SECRET: ${JWT_SECRET:-change-me}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-internaltoken}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
-      ALLOW_DIRECT_AUTH: ${ALLOW_DIRECT_AUTH:-false}
     command: sh -c "npm run prisma:deploy && npm run start"
     healthcheck:
       test: ['CMD-SHELL', 'wget -q -O - http://127.0.0.1:3005/health || exit 1']

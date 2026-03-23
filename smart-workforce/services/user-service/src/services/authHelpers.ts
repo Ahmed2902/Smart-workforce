@@ -4,7 +4,7 @@ export type OrgMembership = {
   id: string;
   userId: string;
   organizationId: string;
-  role: 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
+  role: 'ADMIN' | 'MANAGER' | 'SUPERVISOR' | 'EMPLOYEE';
 };
 
 const p: any = prisma;
@@ -36,4 +36,15 @@ export class AuthHelpersService {
   }
 }
 
-export default new AuthHelpersService();
+const authHelpers = new AuthHelpersService();
+
+export const isSystemAdmin = (userId: string) =>
+  authHelpers.isSystemAdmin(userId);
+
+export const getOrgMembership = (userId: string, orgId: string) =>
+  authHelpers.getOrgMembership(userId, orgId);
+
+export const requireOrgAdmin = (userId: string, orgId: string) =>
+  authHelpers.requireOrgAdmin(userId, orgId);
+
+export default authHelpers;

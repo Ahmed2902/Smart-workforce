@@ -2,9 +2,8 @@ import { app } from './app';
 import { connectRabbit } from './events/rabbit';
 import { config } from './config/env';
 import { consumeExternalEvents } from './events/consumer';
-import { PrismaClient } from '@prisma/client';
+import prisma from './prismaClient';
 
-const prisma = new PrismaClient();
 const PORT = Number(config.port || 3003);
 
 async function retry<T>(

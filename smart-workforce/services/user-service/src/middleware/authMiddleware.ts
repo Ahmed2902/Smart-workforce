@@ -2,8 +2,31 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from './../prismaClient';
 
-const gatewayToken = process.env.GATEWAY_TOKEN || 'gateway-internal-token';
+const gatewayToken = process.env.GATEWAY_TOKEN;
+if (!gatewayToken) {
+  throw new Error('GATEWAY_TOKEN environment variable is required');
+}
 const allowDirectAuth = process.env.ALLOW_DIRECT_AUTH === 'true';
+
+const attachRequestUser = (
+  req: Request,
+  user: {
+    id: string;
+    authUserId: string;
+    email: string;
+    systemRole: string;
+  },
+) => {
+  req.user = {
+    id: user.id,
+    userId: user.id,
+    authUserId: user.authUserId,
+    email: user.email,
+    systemRole: user.systemRole,
+    organizationId: null,
+    organizationRole: null,
+  };
+};
 
 export const protect = async (
   req: Request,
@@ -11,16 +34,33 @@ export const protect = async (
   next: NextFunction,
 ) => {
   if (req.header('x-gateway-token') === gatewayToken) {
-    const id = req.header('x-user-id');
-    const email = req.header('x-user-email') || '';
-    const role = req.header('x-user-role') || '';
-
-    if (!id || !role) {
+    const authUserId = req.header('x-user-id');
+    if (!authUserId) {
       return res.status(401).json({ message: 'Missing forwarded auth headers' });
     }
 
-    req.user = { id, email, role };
+    const user = await prisma.user.findUnique({
+      where: { authUserId },
+      select: {
+        id: true,
+        authUserId: true,
+        email: true,
+        systemRole: true,
+        isActive: true,
+      },
+    });
+
+    if (!user || !user.isActive) {
+      return res.status(401).json({ message: 'The user no longer exists' });
+    }
+
+    attachRequestUser(req, user);
+
     return next();
+  }
+
+  if (!allowDirectAuth) {
+    return res.status(401).json({ message: 'Gateway authentication required' });
   }
 
   const authHeader = req.headers.authorization;
@@ -29,36 +69,30 @@ export const protect = async (
   }
 
   const token = authHeader.split(' ')[1];
-  if (token === process.env.INTERNAL_TOKEN) {
-    req.user = {
-      id: 'internal-service',
-      email: 'internal@service.local',
-      role: 'ADMIN',
-    };
-    return next();
-  }
-
-  if (!allowDirectAuth) {
-    return res.status(401).json({ message: 'Gateway authentication required' });
-  }
-
   const secret = process.env.JWT_SECRET as string;
   try {
-    const payload = jwt.verify(token, secret) as { sub: string };
+    const payload = jwt.verify(token, secret) as { sub?: string; id?: string };
+    const subject = payload.sub || payload.id;
+    if (!subject) {
+      return res.status(401).json({ message: 'Invalid token payload' });
+    }
+
     const user = await prisma.user.findUnique({
-      where: { authUserId: payload.sub },
-      select: { id: true, email: true, systemRole: true, isActive: true },
+      where: { authUserId: subject },
+      select: {
+        id: true,
+        authUserId: true,
+        email: true,
+        systemRole: true,
+        isActive: true,
+      },
     });
 
     if (!user || !user.isActive) {
       return res.status(401).json({ message: 'The user no longer exists' });
     }
 
-    req.user = {
-      id: user.id,
-      email: user.email,
-      role: user.systemRole,
-    };
+    attachRequestUser(req, user);
 
     return next();
   } catch (error) {
@@ -66,9 +100,10 @@ export const protect = async (
   }
 };
 
-export const restrictTo = (...roles: string[]) => {
+export const requireSystemRole = (...roles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    if (!req.user || !roles.includes(req.user.role)) {
+    const systemRole = req.user?.systemRole;
+    if (!req.user || !systemRole || !roles.includes(systemRole)) {
       return res
         .status(403)
         .json({ message: 'Forbidden: insufficient permissions' });
@@ -76,3 +111,5 @@ export const restrictTo = (...roles: string[]) => {
     next();
   };
 };
+
+export const restrictTo = requireSystemRole;

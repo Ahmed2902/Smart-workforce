@@ -8,10 +8,16 @@ export function Cache(keyPattern: string, ttl: number) {
     descriptor: PropertyDescriptor,
   ) {
     const originalMethod = descriptor.value;
+    const paramNames = getFunctionParamNames(originalMethod);
     // 1) building the key
     descriptor.value = async function (...args: any[]) {
       const key = keyPattern.replace(/{(\w+)}/g, (_, paramName) => {
-        const paramIndex = getParamIndex(target, propertyKey, paramName);
+        const paramIndex = paramNames.indexOf(paramName);
+        if (paramIndex === -1) {
+          throw new Error(
+            `Param "${paramName}" not found in function ${propertyKey}`,
+          );
+        }
         return args[paramIndex];
       });
 
@@ -29,22 +35,6 @@ export function Cache(keyPattern: string, ttl: number) {
 
     return descriptor;
   };
-}
-
-function getParamIndex(
-  target: any,
-  methodName: string,
-  paramName: string,
-): number {
-  const paramNames = getFunctionParamNames(target[methodName]);
-
-  const index = paramNames.indexOf(paramName);
-
-  if (index === -1) {
-    throw new Error(`Param "${paramName}" not found in function ${methodName}`);
-  }
-
-  return index;
 }
 
 // Get argument names from function source (simple version)

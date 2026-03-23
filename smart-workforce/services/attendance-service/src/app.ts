@@ -3,6 +3,8 @@ import cors from 'cors';
 import morgan from 'morgan';
 import attendanceRoutes from './routes/attendanceRoutes';
 import dotenv from 'dotenv';
+import { getEmployeeHours } from './controllers/attendanceController';
+import { requireInternalService } from './utils/authMiddleware';
 
 dotenv.config();
 
@@ -16,12 +18,19 @@ app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'ok', service: 'attendance-service' });
 });
 
+app.get(
+  '/internal/attendance/hours/:employeeId',
+  requireInternalService('payroll-service'),
+  getEmployeeHours,
+);
+
 app.use('/api/attendance', attendanceRoutes);
 
 app.use((err: any, req: any, res: any, next: any) => {
   console.error('[Global Error Handler]', err);
+  const statusCode = err?.statusCode || 500;
   res
-    .status(500)
+    .status(statusCode)
     .json({ status: 'error', message: err.message || 'Internal Server Error' });
 });
 

@@ -18,15 +18,40 @@ type UsersQuery = {
 };
 
 export class AuthService {
-  async createUser(email: string, password: string, name: string, phone: string) {
+  async createUser(
+    email: string,
+    password: string,
+    name: string,
+    phone: string,
+  ) {
     const existingauthUser = await prisma.authUser.findUnique({
       where: { email },
     });
     if (existingauthUser) throw new AppError('authUser already exists', 400);
 
     const hashedPassword = await bcrypt.hash(password, 10);
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const bootstrapEmail = (process.env.BOOTSTRAP_ADMIN_EMAIL || '')
+      .trim()
+      .toLowerCase();
+    const allowFirstAdmin = process.env.ALLOW_BOOTSTRAP_ADMIN === 'true';
+
+    let role: 'ADMIN' | 'MANAGER' | 'SUPERVISOR' | 'EMPLOYEE' = 'EMPLOYEE';
+    if (bootstrapEmail && normalizedEmail === bootstrapEmail) {
+      role = 'ADMIN';
+    } else if (allowFirstAdmin) {
+      const existingAdmin = await prisma.authUser.findFirst({
+        where: { role: 'ADMIN' },
+        select: { id: true },
+      });
+      if (!existingAdmin) {
+        role = 'ADMIN';
+      }
+    }
+
     const authUser = await prisma.authUser.create({
-      data: { email, passwordHash: hashedPassword },
+      data: { email, passwordHash: hashedPassword, role },
     });
     return authUser;
   }
@@ -44,7 +69,10 @@ export class AuthService {
 
     if (!authUser) throw new AppError('Invalid credentials', 401);
 
-    const isPasswordValid = await bcrypt.compare(password, authUser.passwordHash);
+    const isPasswordValid = await bcrypt.compare(
+      password,
+      authUser.passwordHash,
+    );
     if (!isPasswordValid) throw new AppError('Invalid credentials', 401);
     const token = jwtUtil.sign({ sub: authUser.id, email: authUser.email });
     const refreshToken = await this.issueRefreshToken(authUser.id);
@@ -73,7 +101,9 @@ export class AuthService {
     });
 
     const frontendBase =
-      process.env.FRONTEND_URL || process.env.BASE_URL || 'http://localhost:3000';
+      process.env.FRONTEND_URL ||
+      process.env.BASE_URL ||
+      'http://localhost:3000';
 
     const resetUrl = `${frontendBase}/reset-password?token=${resetToken}&email=${encodeURIComponent(email)}`;
 

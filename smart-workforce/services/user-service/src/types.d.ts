@@ -5,9 +5,13 @@ declare global {
     interface Request {
       user: {
         id: string;
+        userId: string;
+        authUserId?: string;
         email: string;
         name?: string | null;
-        role: string;
+        systemRole: string;
+        organizationId?: string | null;
+        organizationRole?: string | null;
       };
     }
   }

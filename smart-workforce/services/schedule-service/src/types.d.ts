@@ -1,3 +1,13 @@
+export interface AuthenticatedUser {
+  id: string;
+  userId: string;
+  authUserId?: string;
+  email: string;
+  systemRole: string;
+  organizationId?: string | null;
+  organizationRole?: string | null;
+}
+
 export interface ScheduleInput {
   id: string;
   name?: string;
@@ -47,30 +57,26 @@ export interface CachedDepartment {
 declare global {
   namespace Express {
     interface Request {
-      user?: {
-        id: string;
-        email: string;
-        role: string;
-      };
+      user?: AuthenticatedUser;
     }
   }
 }
 
 export interface ShiftInput {
-  id: string;
+  id?: string;
   scheduleId: string;
   name?: string;
   location?: string;
   startTime: Date;
-  CreatedBy: string;
+  createdById: string;
   endTime: Date;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface shiftAssignmentInput {
   id?: string;
   shiftId: string;
   employeeId: string;
-  assignedBy: string;
+  assignedBy?: string;
 }

@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import * as membershipController from '../controllers/organizationMembershipController';
+import * as userMiddleware from '../middleware/authMiddleware';
 
 const router = Router();
+
+// Require authentication for all routes
+router.use(userMiddleware.protect);
 
 // Add member to organization
 router.post(

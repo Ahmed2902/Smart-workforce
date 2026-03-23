@@ -1,8 +1,32 @@
 // src/events/userProducer.ts
 import { getChannel, EXCHANGE_NAME as USER_EXCHANGE } from './rabbit';
+import prisma from '../prismaClient';
 
 const ORG_EXCHANGE = 'organization';
 const DEPT_EXCHANGE = 'department';
+
+type UserProjectionSource = {
+  id: string;
+  authUserId?: string | null;
+  email?: string | null;
+  name?: string | null;
+  systemRole?: string | null;
+  isActive?: boolean;
+  memberships?: Array<{
+    organizationId: string;
+    role: string;
+  }>;
+};
+
+type InternalUserProjection = {
+  id: string;
+  authUserId: string | null;
+  email: string;
+  systemRole: string;
+  isActive: boolean;
+  organizationId: string | null;
+  organizationRole: string | null;
+};
 
 const publish = async (exchange: string, routingKey: string, event: any) => {
   const channel = getChannel();
@@ -22,22 +46,70 @@ const publish = async (exchange: string, routingKey: string, event: any) => {
   );
 };
 
+const getProjectionSource = async (
+  user: UserProjectionSource,
+): Promise<UserProjectionSource> => {
+  if (
+    user.email &&
+    user.systemRole &&
+    user.isActive !== undefined &&
+    Array.isArray(user.memberships)
+  ) {
+    return user;
+  }
+
+  const persistedUser = await prisma.user.findUnique({
+    where: { id: user.id },
+    select: {
+      id: true,
+      authUserId: true,
+      email: true,
+      name: true,
+      systemRole: true,
+      isActive: true,
+      memberships: {
+        select: {
+          organizationId: true,
+          role: true,
+        },
+        take: 1,
+      },
+    },
+  });
+
+  if (!persistedUser) {
+    throw new Error(`User ${user.id} not found while building event payload`);
+  }
+
+  return persistedUser;
+};
+
+const toInternalUserProjection = async (
+  user: UserProjectionSource,
+): Promise<InternalUserProjection & { name?: string | null }> => {
+  const source = await getProjectionSource(user);
+  const membership = source.memberships?.[0];
+
+  return {
+    id: source.id,
+    authUserId: source.authUserId ?? null,
+    email: source.email ?? '',
+    name: source.name ?? null,
+    systemRole: source.systemRole ?? 'USER',
+    isActive: source.isActive ?? true,
+    organizationId: membership?.organizationId ?? null,
+    organizationRole: membership?.role ?? null,
+  };
+};
+
 /* -------------------------
-   USER events (used by schedule-service)
+   USER events (used by downstream cached-user consumers)
    ------------------------- */
 export const publishUserCreated = async (user: any) => {
+  const projection = await toInternalUserProjection(user);
   const event = {
     type: 'UserRegistered',
-    data: {
-      id: user.id,
-      authUserId: user.authUserId,
-      email: user.email,
-      name: user.name,
-      phone: user.phone ?? null,
-      organizationId: user.organizationId ?? null,
-      departmentId: user.departmentId ?? null,
-      systemRole: user.systemRole ?? 'EMPLOYEE',
-    },
+    data: projection,
     timestamp: new Date().toISOString(),
   };
 
@@ -45,18 +117,10 @@ export const publishUserCreated = async (user: any) => {
 };
 
 export const publishUserUpdated = async (user: any) => {
+  const projection = await toInternalUserProjection(user);
   const event = {
     type: 'UserUpdated',
-    data: {
-      id: user.id,
-      authUserId: user.authUserId,
-      email: user.email,
-      name: user.name,
-      phone: user.phone ?? null,
-      organizationId: user.organizationId ?? null,
-      departmentId: user.departmentId ?? null,
-      systemRole: user.systemRole ?? null,
-    },
+    data: projection,
     timestamp: new Date().toISOString(),
   };
 
@@ -64,13 +128,10 @@ export const publishUserUpdated = async (user: any) => {
 };
 
 export const publishUserDeleted = async (user: any) => {
+  const projection = await toInternalUserProjection(user);
   const event = {
     type: 'UserDeleted',
-    data: {
-      id: user.id,
-      authUserId: user.authUserId ?? null,
-      email: user.email ?? null,
-    },
+    data: projection,
     timestamp: new Date().toISOString(),
   };
 
@@ -96,9 +157,15 @@ export const publishUserMembershipAdded = async (data: {
     name: string;
   };
 }) => {
+  const userProjection = await toInternalUserProjection(data.user);
   const event = {
     type: 'UserMembershipAdded',
-    data,
+    data: {
+      ...data,
+      user: userProjection,
+      organizationId: userProjection.organizationId ?? data.organizationId,
+      role: userProjection.organizationRole ?? data.role,
+    },
     timestamp: new Date().toISOString(),
   };
 
@@ -121,9 +188,15 @@ export const publishUserMembershipUpdated = async (data: {
     name: string;
   };
 }) => {
+  const userProjection = await toInternalUserProjection(data.user);
   const event = {
     type: 'UserMembershipUpdated',
-    data,
+    data: {
+      ...data,
+      user: userProjection,
+      organizationId: userProjection.organizationId ?? data.organizationId,
+      role: userProjection.organizationRole ?? data.role,
+    },
     timestamp: new Date().toISOString(),
   };
 
@@ -143,9 +216,17 @@ export const publishUserMembershipRemoved = async (data: {
     name: string;
   };
 }) => {
+  const userProjection = await toInternalUserProjection(data.user);
   const event = {
     type: 'UserMembershipRemoved',
-    data,
+    data: {
+      ...data,
+      user: {
+        ...userProjection,
+        organizationId: null,
+        organizationRole: null,
+      },
+    },
     timestamp: new Date().toISOString(),
   };
 

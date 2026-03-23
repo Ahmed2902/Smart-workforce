@@ -1,12 +1,12 @@
-import service from '../services/scheduleService';
+import * as service from '../services/scheduleService';
 import { Request, Response, NextFunction } from 'express';
-import { ScheduleInput } from '../types';
-import AppError from '../utils/AppError';
+import { AuthenticatedUser, ScheduleInput } from '../types';
 import {
   publishScheduleCreated,
   publishScheduleUpdated,
   publishScheduleDeleted,
 } from '../events/producer';
+import { requireActor } from '../utils/accessControl';
 
 export const createSchedule = async (
   req: Request,
@@ -14,16 +14,11 @@ export const createSchedule = async (
   next: NextFunction,
 ) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      throw new AppError('Not authenticated', 401);
-    }
-
+    const actor = requireActor(req.user as AuthenticatedUser | undefined);
     const data = req.body as ScheduleInput;
-    // Set the creator ID from the authenticated user
-    data.createdById = userId;
+    data.createdById = actor.id;
 
-    const schedule = await service.createSchedule(data);
+    const schedule = await service.createSchedule(actor, data);
     await publishScheduleCreated(schedule);
     res.status(200).json({
       status: 'successful',
@@ -41,11 +36,7 @@ export const getSchedules = async (
   next: NextFunction,
 ) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      throw new AppError('Not authenticated', 401);
-    }
-
+    const actor = requireActor(req.user as AuthenticatedUser | undefined);
     const filters = {
       organizationId: req.query.organizationId as string | undefined,
       departmentId: req.query.departmentId as string | undefined,
@@ -55,7 +46,7 @@ export const getSchedules = async (
       take: req.query.take ? parseInt(req.query.take as string, 10) : 20,
     };
 
-    const schedules = await service.getSchedules(userId, filters);
+    const schedules = await service.getSchedules(actor, filters);
     res.status(200).json({
       status: 'success',
       count: schedules.length,
@@ -72,12 +63,8 @@ export const getScheduleById = async (
   next: NextFunction,
 ) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      throw new AppError('Not authenticated', 401);
-    }
-
-    const schedule = await service.getScheduleById(userId, req.params.id);
+    const actor = requireActor(req.user as AuthenticatedUser | undefined);
+    const schedule = await service.getScheduleById(actor, req.params.id);
     res.status(200).json({
       status: 'success',
       data: schedule,
@@ -94,13 +81,9 @@ export const updateSchedule = async (
   next: NextFunction,
 ) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      throw new AppError('Not authenticated', 401);
-    }
-
+    const actor = requireActor(req.user as AuthenticatedUser | undefined);
     const data: ScheduleInput = { id: req.params.id, ...req.body };
-    const schedule = await service.updateSchedule(userId, data);
+    const schedule = await service.updateSchedule(actor, data);
     await publishScheduleUpdated(schedule);
     res.status(200).json({
       status: 'success',
@@ -117,12 +100,8 @@ export const deleteSchedule = async (
   next: NextFunction,
 ) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      throw new AppError('Not authenticated', 401);
-    }
-
-    await service.deleteSchedule(userId, req.params.id);
+    const actor = requireActor(req.user as AuthenticatedUser | undefined);
+    await service.deleteSchedule(actor, req.params.id);
     await publishScheduleDeleted(req.params.id);
     res.status(204).json({
       status: 'success',
