@@ -136,7 +136,24 @@ export async function handleAttendanceEvent(data: AttendanceEventData) {
     throw new Error('Attendance event missing employeeId');
   }
 
-  const period = derivePayrollPeriod(data);
+  console.log(
+    '[PayrollEvent] Received attendance event for employee:',
+    data.employeeId,
+    'data:',
+    JSON.stringify(data),
+  );
+
+  let period: string;
+  try {
+    period = derivePayrollPeriod(data);
+  } catch (err) {
+    console.warn(
+      '[PayrollEvent] Could not derive payroll period from event, skipping:',
+      err,
+    );
+    return null;
+  }
+
   const payroll = await prisma.payroll.findUnique({
     where: {
       employeeId_period: {
@@ -147,11 +164,32 @@ export async function handleAttendanceEvent(data: AttendanceEventData) {
     select: { id: true },
   });
 
+  console.log(
+    '[PayrollEvent] Payroll lookup for',
+    data.employeeId,
+    period,
+    'found:',
+    Boolean(payroll),
+  );
+
   if (!payroll) {
     return null;
   }
 
-  return calculatePayroll(data.employeeId, period, {
-    skipEmployeeStateCheck: true,
-  });
+  try {
+    const res = await calculatePayroll(data.employeeId, period, {
+      skipEmployeeStateCheck: true,
+    });
+    console.log(
+      '[PayrollEvent] calculatePayroll result for',
+      data.employeeId,
+      period,
+      '->',
+      res?.id || 'no-id',
+    );
+    return res;
+  } catch (err) {
+    console.error('[PayrollEvent] calculatePayroll failed:', err);
+    throw err;
+  }
 }

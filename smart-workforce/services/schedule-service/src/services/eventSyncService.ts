@@ -9,7 +9,7 @@ type MembershipEventData = {
     name?: string;
     systemRole?: SystemRole;
   };
-  organization?: { id?: string };
+  organization?: { id?: string; name?: string };
   role?: Role;
 };
 
@@ -28,6 +28,17 @@ export async function syncMembershipUpsert(data: MembershipEventData) {
   if (!userId || !user?.email || !organization?.id) {
     throw new Error('Missing user/org fields in membership event');
   }
+
+  await prisma.cachedOrganization.upsert({
+    where: { id: organization.id },
+    update: {
+      name: organization.name ?? 'Unknown Organization',
+    },
+    create: {
+      id: organization.id,
+      name: organization.name ?? 'Unknown Organization',
+    },
+  });
 
   await prisma.cachedUser.upsert({
     where: { id: userId },

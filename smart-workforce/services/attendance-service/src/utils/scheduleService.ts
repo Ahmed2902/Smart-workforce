@@ -78,7 +78,18 @@ export async function validateShiftForEmployee(
 ): Promise<boolean> {
   try {
     const shift = await getShiftDetails(shiftId, user);
-    return shift.employeeId === employeeId;
+
+    // Check for direct employeeId field (legacy format)
+    if ((shift as any).employeeId) {
+      return (shift as any).employeeId === employeeId;
+    }
+
+    // Check for assignments array (current format)
+    if (shift.assignments && Array.isArray(shift.assignments)) {
+      return shift.assignments.some((a) => a.employeeId === employeeId);
+    }
+
+    return false;
   } catch (error) {
     return false;
   }
@@ -87,10 +98,11 @@ export async function validateShiftForEmployee(
 export async function isLateForShiftForUser(
   shiftId: string,
   user: ForwardedUser,
+  nowOverride?: Date,
 ): Promise<boolean> {
   try {
     const shift = await getShiftDetails(shiftId, user);
-    const now = new Date();
+    const now = nowOverride ? new Date(nowOverride) : new Date();
     const shiftStart = new Date(shift.startDate);
     // Consider 15 minutes grace period
     const graceMinutes = 15;

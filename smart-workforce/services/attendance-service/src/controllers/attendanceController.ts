@@ -1,9 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { attendanceService } from '../services/attendanceService';
-import {
-  AuthenticatedUser,
-  requireActor,
-} from '../utils/accessControl';
+import { AuthenticatedUser, requireActor } from '../utils/accessControl';
 
 export const checkIn = async (
   req: Request,
@@ -11,9 +8,13 @@ export const checkIn = async (
   next: NextFunction,
 ) => {
   try {
-    const { attendanceId } = req.body;
+    const { attendanceId, time } = req.body;
     const actor = requireActor(req.user as AuthenticatedUser | undefined);
-    const attendance = await attendanceService.CheckIn(actor, attendanceId);
+    const attendance = await attendanceService.CheckIn(
+      actor,
+      attendanceId,
+      time,
+    );
     res.status(200).json({
       status: 'success',
       message: 'employee checked in succesffuly',
@@ -53,9 +54,13 @@ export const checkOut = async (
   next: NextFunction,
 ) => {
   try {
-    const { attendanceId } = req.body;
+    const { attendanceId, time } = req.body;
     const actor = requireActor(req.user as AuthenticatedUser | undefined);
-    const attendance = await attendanceService.CheckOut(actor, attendanceId);
+    const attendance = await attendanceService.CheckOut(
+      actor,
+      attendanceId,
+      time,
+    );
     res.status(200).json({
       status: 'success',
       message: 'Employee checked out successfully',

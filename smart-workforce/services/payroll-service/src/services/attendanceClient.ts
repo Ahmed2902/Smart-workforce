@@ -1,8 +1,23 @@
 import axios, { AxiosError } from 'axios';
 
-const ATTENDANCE_SERVICE_URL =
-  process.env.ATTENDANCE_SERVICE_INTERNAL_URL ||
-  'http://localhost:3004/internal/attendance';
+// Prefer an explicit internal URL, fall back to transforming the external URL
+// (e.g. http://attendance-service:3004/api/attendance ->
+// http://attendance-service:3004/internal/attendance) so compose/env mismatches
+// don't break internal calls.
+const ATTENDANCE_SERVICE_URL = (() => {
+  const internal = process.env.ATTENDANCE_SERVICE_INTERNAL_URL;
+  if (internal) return internal;
+  const external = process.env.ATTENDANCE_SERVICE_URL;
+  if (external) {
+    try {
+      return external.replace(/\/api\/attendance\/?/, '/internal/attendance/').replace(/\/$/, '');
+    } catch (e) {
+      // ignore and fall through to default
+    }
+  }
+  return 'http://localhost:3004/internal/attendance';
+})();
+console.log('[attendanceClient] Using ATTENDANCE_SERVICE_INTERNAL_URL ->', ATTENDANCE_SERVICE_URL);
 const GATEWAY_TOKEN = process.env.GATEWAY_TOKEN;
 if (!GATEWAY_TOKEN) {
   throw new Error('GATEWAY_TOKEN environment variable is required');

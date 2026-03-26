@@ -69,7 +69,7 @@ export class attendance {
     return attendance;
   }
 
-  async CheckIn(actor: AuthenticatedUser, id: string) {
+  async CheckIn(actor: AuthenticatedUser, id: string, time?: string | Date) {
     const lockKey = `lock:checkin:${id}`;
     const lockAcquired = await acquireLock(lockKey, 30); // 30 second lock
 
@@ -91,7 +91,19 @@ export class attendance {
       }
       if (attendance.clockIn) throw new AppError('Already checked in', 400);
 
-      const now = new Date();
+      // Parse and validate provided time (accept Date or ISO string)
+      let now: Date;
+      if (time) {
+        now = time instanceof Date ? time : new Date(time);
+      } else {
+        now = new Date();
+      }
+      if (isNaN(now.getTime())) {
+        throw new AppError('Invalid check-in time format', 400);
+      }
+      console.log(
+        `[AttendanceService] CheckIn id=${id} providedTime=${String(time)} usingTime=${now.toISOString()}`,
+      );
 
       // If there's a shift assigned, validate it
       if (attendance.shiftId) {
@@ -105,11 +117,18 @@ export class attendance {
           throw new AppError('Invalid shift for this employee', 400);
         }
 
-        const isLate = await isLateForShiftForUser(attendance.shiftId, actor);
+        const isLate = await isLateForShiftForUser(
+          attendance.shiftId,
+          actor,
+          now,
+        );
         const status = isLate
           ? AttendanceStatus.LATE
           : AttendanceStatus.PRESENT;
 
+        console.log(
+          `[AttendanceService] Updating attendance ${id} with clockIn=${now.toISOString()} status=${status}`,
+        );
         const result = await prisma.attendance.update({
           where: { id, clockIn: null },
           data: {
@@ -119,8 +138,8 @@ export class attendance {
           },
         });
 
-        // Invalidate employee hours cache after successful check-in
-        await this.invalidateEmployeeHoursCache(attendance.employeeId);
+        // Invalidate employee hours cache after successful check-in (use check-in time)
+        await this.invalidateEmployeeHoursCache(attendance.employeeId, now);
 
         await publishAttendanceUpdated(result);
         await publishAttendanceStatusChanged({
@@ -138,6 +157,9 @@ export class attendance {
       }
 
       // If no shift assigned, mark as present
+      console.log(
+        `[AttendanceService] Updating attendance ${id} with clockIn=${now.toISOString()} status=${AttendanceStatus.PRESENT}`,
+      );
       const result = await prisma.attendance.update({
         where: { id },
         data: {
@@ -147,8 +169,8 @@ export class attendance {
         },
       });
 
-      // Invalidate employee hours cache after successful check-in
-      await this.invalidateEmployeeHoursCache(attendance.employeeId);
+      // Invalidate employee hours cache after successful check-in (use check-in time)
+      await this.invalidateEmployeeHoursCache(attendance.employeeId, now);
 
       await publishAttendanceUpdated(result);
       await publishAttendanceStatusChanged({
@@ -173,7 +195,7 @@ export class attendance {
    * Employee checks out
    * Uses distributed lock to prevent race conditions
    */
-  async CheckOut(actor: AuthenticatedUser, id: string) {
+  async CheckOut(actor: AuthenticatedUser, id: string, time?: string | Date) {
     const lockKey = `lock:checkout:${id}`;
     const lockAcquired = await acquireLock(lockKey, 30); // 30 second lock
 
@@ -197,18 +219,30 @@ export class attendance {
         throw new AppError('Cannot check out before checking in', 400);
       if (attendance.clockOut) throw new AppError('Already checked out', 400);
 
-      const now = new Date();
+      // Parse and validate provided time (accept Date or ISO string)
+      let now: Date;
+      if (time) {
+        now = time instanceof Date ? time : new Date(time);
+      } else {
+        now = new Date();
+      }
+      if (isNaN(now.getTime())) {
+        throw new AppError('Invalid check-out time format', 400);
+      }
 
+      console.log(
+        `[AttendanceService] CheckOut id=${id} providedTime=${String(time)} usingTime=${now.toISOString()}`,
+      );
       const result = await prisma.attendance.update({
-        where: { id, clockIn: { lt: new Date() } },
+        where: { id, clockIn: { lt: now } },
         data: {
           clockOut: now,
           updatedAt: now,
         },
       });
 
-      // Invalidate employee hours cache after successful check-out
-      await this.invalidateEmployeeHoursCache(attendance.employeeId);
+      // Invalidate employee hours cache after successful check-out (use check-out time)
+      await this.invalidateEmployeeHoursCache(attendance.employeeId, now);
 
       await publishAttendanceUpdated(result);
       await publishAttendanceStatusChanged({
@@ -296,6 +330,9 @@ export class attendance {
     });
 
     const result = { totalHours, overtimeHours };
+    console.log(
+      `[Attendance] Calculated hours for ${employeeId}@${period}: records=${records.length} totalHours=${totalHours} overtime=${overtimeHours}`,
+    );
 
     return result;
   }
@@ -306,12 +343,15 @@ export class attendance {
    */
   private async invalidateEmployeeHoursCache(
     employeeId: string,
+    when?: Date,
   ): Promise<void> {
     try {
       // In a real scenario with many keys, you might use SCAN to find pattern matches
       // For now, we'll just clear the current month's cache
-      const now = new Date();
-      const currentPeriod = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+      const now = when ? new Date(when) : new Date();
+      const currentPeriod = `${now.getUTCFullYear()}-${String(
+        now.getUTCMonth() + 1,
+      ).padStart(2, '0')}`;
       const cacheKey = `emp:${employeeId}:hours:${currentPeriod}`;
       await deleteCache(cacheKey);
       console.log(`[CACHE INVALIDATED] Employee hours cache for ${employeeId}`);

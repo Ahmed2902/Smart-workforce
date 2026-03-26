@@ -110,6 +110,10 @@ export const calculatePayroll = async (
     period,
   );
 
+  console.log(
+    `[Payroll] Calculated hours for ${employeeId}@${period}: totalHours=${totalHours}, overtimeHours=${overtimeHours}`,
+  );
+
   const totalPay = totalHours * emp.basePay + overtimeHours * emp.overtimePay;
 
   const payroll = await prisma.payroll.upsert({

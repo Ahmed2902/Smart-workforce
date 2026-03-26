@@ -162,9 +162,13 @@ export const publishUserMembershipAdded = async (data: {
     type: 'UserMembershipAdded',
     data: {
       ...data,
-      user: userProjection,
-      organizationId: userProjection.organizationId ?? data.organizationId,
-      role: userProjection.organizationRole ?? data.role,
+      user: {
+        ...userProjection,
+        organizationId: data.organizationId,
+        organizationRole: data.role,
+      },
+      organizationId: data.organizationId,
+      role: data.role,
     },
     timestamp: new Date().toISOString(),
   };
@@ -193,9 +197,13 @@ export const publishUserMembershipUpdated = async (data: {
     type: 'UserMembershipUpdated',
     data: {
       ...data,
-      user: userProjection,
-      organizationId: userProjection.organizationId ?? data.organizationId,
-      role: userProjection.organizationRole ?? data.role,
+      user: {
+        ...userProjection,
+        organizationId: data.organizationId,
+        organizationRole: data.role,
+      },
+      organizationId: data.organizationId,
+      role: data.role,
     },
     timestamp: new Date().toISOString(),
   };

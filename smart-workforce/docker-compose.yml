@@ -244,6 +244,7 @@ services:
       DATABASE_URL: postgres://payroll:payroll@payroll-db:5432/payrolldb
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672
       ATTENDANCE_SERVICE_URL: http://attendance-service:3004/api/attendance
+      ATTENDANCE_SERVICE_INTERNAL_URL: http://attendance-service:3004/internal/attendance
       JWT_SECRET: ${JWT_SECRET:-change-me}
       GATEWAY_TOKEN: ${GATEWAY_TOKEN:-gateway-internal-token}
     command: sh -c "npm run prisma:deploy && npm run start"

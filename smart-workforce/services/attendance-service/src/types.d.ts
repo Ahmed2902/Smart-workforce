@@ -1,7 +1,7 @@
 interface ShiftDetails {
   id: string;
   startDate: Date;
-  endDate: Date;
-  employeeId: string;
-  status: string;
+  endTime: Date;
+  status?: string;
+  assignments?: Array<{ employeeId: string; employee?: any }>;
 }
